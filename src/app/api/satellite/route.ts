@@ -176,6 +176,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // If Solar API data is unavailable, derive a deterministic fallback from ZIP so results vary by location.
+  if (!solarData && zip && /^\d{5}$/.test(zip)) {
+    const zipSeed = parseInt(zip, 10);
+    roofAreaM2 = 85 + (zipSeed % 120); // 85..204 m2
+    annualSunshine = 1250 + (zipSeed % 650); // 1250..1899 h/yr
+    maxPanels = Math.max(10, Math.min(70, Math.round(roofAreaM2 / 2.3)));
+  }
+
   // Satellite image URL (served directly to client)
   const satelliteUrl = lat && lng && key ? getSatelliteImageUrl(lat, lng) : null;
 

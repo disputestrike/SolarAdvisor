@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SolarAdvisor — Your Expert Guide to Home Solar Savings",
-  description: "Get a free personalized solar estimate in 60 seconds. See how much you can save with $0-down solar options.",
-  keywords: "solar panels, solar energy, home solar, solar savings, solar estimate",
+  title: "SolarAdvisor — Solar Estimate Platform",
+  description: "Get a free personalized solar estimate in about 60 seconds for residential, commercial, and other property types.",
+  keywords: "solar panels, solar energy, solar savings, solar estimate, commercial solar, business solar",
   openGraph: {
     title: "SolarAdvisor — Cut Your Electric Bill by Up to 90%",
     description: "Free personalized solar estimate in 60 seconds. No cost, no obligation.",

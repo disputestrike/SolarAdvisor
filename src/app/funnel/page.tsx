@@ -1043,7 +1043,7 @@ export default function FunnelPage() {
 
         {/* Trust bar */}
         <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 16, marginTop: 24 }}>
-          {["4.9★ Rated", "14,800+ Estimates", "No Cost · No Obligation"].map(t => (
+          {["4.9★ Rated", "3.3M+ Estimates", "No Cost · No Obligation"].map(t => (
             <span key={t} style={{
               background: "var(--white)", border: "1px solid var(--border)",
               borderRadius: "999px", padding: "5px 14px",

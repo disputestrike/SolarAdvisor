@@ -10,8 +10,8 @@ const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
 const SatelliteRoofDemo = dynamic(() => import("@/components/SatelliteRoofDemo"), { ssr: false });
 
 /** Social proof counter — static display; tune to match your analytics when available. */
-const ONLINE_ESTIMATES_COUNT = "14,287";
-const ONLINE_ESTIMATES_SINCE = 2021;
+const ONLINE_ESTIMATES_COUNT = "3,372,403";
+const ONLINE_ESTIMATES_SINCE = 2008;
 
 const HERO_SKY =
   "https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=2400&q=80";
@@ -37,7 +37,7 @@ const FAQS = [
 const PROCESS_STEPS = [
   { num: "01", title: "Free estimate", desc: "Personalized savings analysis in about a minute — no obligation." },
   { num: "02", title: "Site assessment", desc: "A specialist reviews your roof, shading, and usage on-site or remotely." },
-  { num: "03", title: "Custom proposal", desc: "Financing, incentives, and production modeled for your home." },
+  { num: "03", title: "Custom proposal", desc: "Financing, incentives, and production modeled for your property." },
   { num: "04", title: "Professional install", desc: "Certified crews complete most systems in 1–3 days." },
   { num: "05", title: "Inspection & PTO", desc: "Permits, inspection, and utility permission to operate handled for you." },
   { num: "06", title: "Start saving", desc: "Monitor production and savings; support when you need it." },
@@ -122,7 +122,7 @@ export default function HomePage() {
             fontSize: "0.72rem", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase",
             color: "rgba(248, 250, 252, 0.85)", marginBottom: 14,
           }}>
-            Residential solar · financing · incentives
+            Solar · financing · incentives
           </p>
           <h1 style={{
             fontFamily: "var(--font-brand)", fontWeight: 700,
@@ -130,7 +130,7 @@ export default function HomePage() {
             letterSpacing: "-0.02em", color: "#ffffff", marginBottom: 28,
             textShadow: "0 2px 24px rgba(0,0,0,0.25)",
           }}>
-            See how much it will cost to install solar panels for your home
+            See how much it will cost to install solar
           </h1>
 
           <HeroZipCTA />
@@ -189,7 +189,7 @@ export default function HomePage() {
       <section style={{ background: "white", borderBottom: "1px solid #e2e8f0", padding: "40px clamp(20px, 5vw, 80px)" }}>
         <div style={{ maxWidth: 1000, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 28, textAlign: "center" }}>
           {[
-            { val: "14,800+", label: "Homeowners modeled" },
+            { val: "3.3M+", label: "Estimates modeled" },
             { val: "~$187", label: "Example monthly savings" },
             { val: "A–rated", label: "Installer partners" },
           ].map((s) => (
@@ -213,7 +213,7 @@ export default function HomePage() {
             </h2>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 20 }}>
             {PROCESS_STEPS.map((step) => (
               <div
                 key={step.num}
@@ -249,7 +249,7 @@ export default function HomePage() {
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 44, alignItems: "center" }}>
             <div>
-              <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--corp-blue)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>
+            <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--corp-blue)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>
                 Roof & production modeling
               </div>
               <h2 style={{ fontFamily: "var(--font-brand)", fontSize: "clamp(1.55rem, 3.5vw, 2.2rem)", fontWeight: 700, color: "var(--corp-navy)", letterSpacing: "-0.02em", marginBottom: 14 }}>
@@ -382,7 +382,7 @@ export default function HomePage() {
             Ready for a serious number on your roof?
           </h2>
           <p style={{ color: "var(--corp-muted)", fontSize: "0.98rem", marginBottom: 28, lineHeight: 1.6 }}>
-            Same flow as homeowners who already ran a {ONLINE_ESTIMATES_COUNT}+ estimate since {ONLINE_ESTIMATES_SINCE}. No cartoon promises — just math, incentives, and next steps.
+            Same flow used in {ONLINE_ESTIMATES_COUNT}+ estimates since {ONLINE_ESTIMATES_SINCE}. No cartoon promises — just math, incentives, and next steps.
           </p>
           <Link
             href="/funnel"

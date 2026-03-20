@@ -49,7 +49,7 @@ export default function BrandLogo({ inverted = false, size = "default" }: BrandL
           SolarAdvisor
         </span>
         <span style={{ fontSize: size === "sm" ? "0.62rem" : "0.65rem", color: sub, fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-          Home solar estimates
+          Solar estimates
         </span>
       </span>
     </Link>

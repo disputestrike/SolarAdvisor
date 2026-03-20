@@ -141,7 +141,7 @@ function getLeadWelcomeEmail(lead: Lead): string {
     <!-- Body -->
     <div style="padding:40px 32px;">
       <h1 style="font-size:28px;color:#1a1a1a;margin:0 0 16px;">Hi ${lead.firstName}, you're one step closer to energy freedom! 🌞</h1>
-      <p style="color:#555;font-size:16px;line-height:1.7;margin:0 0 24px;">Based on your information, here's what we estimate for your home:</p>
+      <p style="color:#555;font-size:16px;line-height:1.7;margin:0 0 24px;">Based on your information, here is what we estimate for your property:</p>
 
       <div style="background:#fff9f0;border:2px solid #FFD700;border-radius:12px;padding:24px;margin:0 0 32px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
