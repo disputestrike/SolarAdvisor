@@ -14,7 +14,7 @@ const ONLINE_ESTIMATES_COUNT = "14,287";
 const ONLINE_ESTIMATES_SINCE = 2021;
 
 const HERO_SKY =
-  "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=2400&q=80";
+  "https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=2400&q=80";
 const STRIP_PANELS =
   "https://images.unsplash.com/photo-1611365892117-00ac5ef43c90?auto=format&fit=crop&w=2000&q=85";
 
@@ -408,10 +408,18 @@ export default function HomePage() {
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 24 }}>
           <BrandLogo inverted />
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-            {["Privacy", "Terms", "Contact"].map((l) => (
-              <a key={l} href="#" style={{ color: "rgba(248,250,252,0.55)", fontSize: "0.82rem", textDecoration: "none", fontWeight: 500 }}>
-                {l}
-              </a>
+            {[
+              { label: "Privacy", href: "/privacy" },
+              { label: "Terms", href: "/terms" },
+              { label: "Contact", href: "/contact" },
+            ].map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                style={{ color: "rgba(248,250,252,0.55)", fontSize: "0.82rem", textDecoration: "none", fontWeight: 500 }}
+              >
+                {item.label}
+              </Link>
             ))}
           </div>
           <p style={{ color: "rgba(248,250,252,0.38)", fontSize: "0.75rem", maxWidth: 360, lineHeight: 1.5 }}>
