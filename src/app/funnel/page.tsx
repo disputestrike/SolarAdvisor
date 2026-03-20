@@ -765,6 +765,13 @@ export default function FunnelPage() {
     setFormData(prev => ({ ...prev, [key]: value }));
   }, []);
 
+  useEffect(() => {
+    const zip = new URLSearchParams(window.location.search).get("zip");
+    if (zip && /^\d{5}$/.test(zip)) {
+      setFormData((prev) => (prev.zipCode === zip ? prev : { ...prev, zipCode: zip }));
+    }
+  }, []);
+
   // Pre-calculate estimate when bill is set
   useEffect(() => {
     if (formData.monthlyBill) {

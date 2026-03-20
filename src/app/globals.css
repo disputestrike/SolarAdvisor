@@ -23,6 +23,12 @@
   --shadow-deep: 0 20px 60px rgba(26,16,5,0.12);
   --font-display: 'Playfair Display', Georgia, serif;
   --font-body: 'DM Sans', system-ui, sans-serif;
+  /* Primary UI / nav / hero — neutral sans reads more “utility / finance” than display serif */
+  --font-brand: 'Source Sans 3', 'DM Sans', system-ui, sans-serif;
+  --corp-navy: #0f172a;
+  --corp-blue: #1d4ed8;
+  --corp-muted: #64748b;
+  --surface-page: #f8fafc;
   --radius-sm: 8px;
   --radius-md: 16px;
   --radius-lg: 24px;
@@ -74,3 +80,57 @@ body {
 ::-webkit-scrollbar-track { background: var(--surface); }
 ::-webkit-scrollbar-thumb { background: var(--earth-tan); border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--sun-core); }
+
+/* —— Professional hero (homepage) —— */
+.hero-pro {
+  position: relative;
+  min-height: min(82vh, 700px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(72px, 12vw, 120px) clamp(20px, 4vw, 48px);
+}
+.hero-pro__bg {
+  object-fit: cover;
+  z-index: 0;
+}
+.hero-pro__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.42) 0%,
+    rgba(15, 23, 42, 0.58) 45%,
+    rgba(15, 23, 42, 0.72) 100%
+  );
+  pointer-events: none;
+}
+.hero-pro__inner {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.nav-pro {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(200px, 2fr) minmax(160px, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 72px;
+}
+
+@media (max-width: 900px) {
+  .nav-pro {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+    padding-top: 8px;
+    padding-bottom: 12px;
+  }
+  .nav-pro__center { order: 3; text-align: center; }
+  .nav-pro__right { order: 2; justify-self: end; }
+  .nav-pro__left { order: 1; }
+}
