@@ -8,6 +8,9 @@ node_modules/
 out/
 build/
 
+# TypeScript incremental build (must not be committed — conflicts with Railway/Nixpacks cache mounts)
+*.tsbuildinfo
+
 # Env
 .env
 .env.local
