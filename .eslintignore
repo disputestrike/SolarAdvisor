@@ -1,0 +1,2 @@
+# Jest tests — not part of the Next.js production bundle; run `npm test` / CI separately.
+src/__tests__/**
