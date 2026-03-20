@@ -1,0 +1,61 @@
+{
+  "name": "solaradvisor",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest --no-coverage",
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:load": "node tests/load-chaos.mjs",
+    "migrate": "node -e \"require(\"dotenv\").config({path:\".env.local\"}); const {execSync}=require(\"child_process\"); execSync(\"mysql -h $MYSQL_HOST -P ${MYSQL_PORT:-3306} -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < migrate.sql\", {stdio:\"inherit\"})\"",
+    "db:seed": "node scripts/seed-admin.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@tanstack/react-query": "^5.91.2",
+    "axios": "^1.13.6",
+    "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.3.1",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.1",
+    "framer-motion": "^12.38.0",
+    "jose": "^6.2.2",
+    "lucide-react": "^0.577.0",
+    "mysql2": "^3.20.0",
+    "next": "14.2.35",
+    "next-auth": "^4.24.13",
+    "nodemailer": "^7.0.13",
+    "react": "^18",
+    "react-dom": "^18",
+    "react-hook-form": "^7.71.2",
+    "tailwind-merge": "^3.5.0",
+    "twilio": "^5.13.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20",
+    "@types/nodemailer": "^7.0.11",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.35",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5"
+  },
+  "description": "AI-powered solar lead generation and management platform",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
