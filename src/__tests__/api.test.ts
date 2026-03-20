@@ -238,14 +238,15 @@ describe("GET /api/health", () => {
     expect(data.services.database).toBe("ok");
   });
 
-  test("returns 503 when DB is down", async () => {
+  test("returns 200 degraded when DB is down (liveness for Railway)", async () => {
     const { checkDbConnection } = await import("@/db");
     (checkDbConnection as jest.Mock).mockResolvedValue(false);
     const { GET } = await import("@/app/api/health/route");
     const res = await GET();
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.status).toBe("degraded");
+    expect(data.services.database).toBe("error");
   });
 
   test("response includes timestamp", async () => {
