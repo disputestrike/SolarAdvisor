@@ -98,26 +98,11 @@ export default function HomePage() {
           </span>
         </div>
         <div className="nav-pro__right" style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <a href="#how-it-works" style={{ color: "var(--corp-muted)", fontWeight: 600, fontSize: "0.82rem", textDecoration: "none" }}>How it works</a>
+          <a href="#faq" style={{ color: "var(--corp-muted)", fontWeight: 600, fontSize: "0.82rem", textDecoration: "none" }}>FAQ</a>
           <DoeTrustBadge />
         </div>
       </nav>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          gap: 20,
-          flexWrap: "wrap",
-          padding: "8px clamp(16px, 4vw, 40px) 12px",
-          borderTop: "1px solid #f1f5f9",
-        }}
-      >
-        <a href="#how-it-works" style={{ color: "var(--corp-muted)", fontWeight: 600, fontSize: "0.82rem", textDecoration: "none" }}>How it works</a>
-        <a href="#faq" style={{ color: "var(--corp-muted)", fontWeight: 600, fontSize: "0.82rem", textDecoration: "none" }}>FAQ</a>
-        <Link href="/funnel" style={{ color: "var(--corp-blue)", fontWeight: 700, fontSize: "0.82rem", textDecoration: "none" }}>
-          Full questionnaire →
-        </Link>
-      </div>
       </header>
 
       {/* ——— HERO ——— */}
