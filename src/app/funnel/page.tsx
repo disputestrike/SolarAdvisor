@@ -1,20 +1,38 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import BrandLogo from "@/components/BrandLogo";
+import PlacesAddressField, { type ResolvedPlace } from "@/components/PlacesAddressField";
 
 const SatelliteRoof = dynamic(() => import("@/components/SatelliteRoof"), { ssr: false });
 const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
 
+const FUNNEL_MAP_BG =
+  "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=2400&q=82";
+
 /* ─── Types ─────────────────────────────────────────────────────────── */
 interface FormData {
+  addressInput: string;
+  formattedAddress: string;
+  streetAddress: string;
+  placeId: string;
+  lat: number | null;
+  lng: number | null;
+  city: string;
+  state: string;
   zipCode: string;
+  utilityProvider: string;
+  buildingType: "residential" | "commercial";
+  stories: "one" | "two_plus" | "";
   isHomeowner: boolean | null;
   monthlyBill: number | null;
   roofSlope: string;
   shadingLevel: string;
+  roofType: string;
   isDecisionMaker: boolean;
   preferredFinancing: string;
   firstName: string;
@@ -43,7 +61,7 @@ interface ZipInfo {
   incentives: { netMetering: boolean; stateRebate: number; srec: boolean; avgSunHours: number } | null;
 }
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 
 const BILL_OPTIONS = [
   { label: "Under $75", value: 60 },
@@ -55,17 +73,17 @@ const BILL_OPTIONS = [
 ];
 
 const ROOF_OPTIONS = [
-  { value: "low", label: "Low / Gentle", icon: "🏠", desc: "Best for solar" },
-  { value: "medium", label: "Medium Pitch", icon: "⛺", desc: "Great for solar" },
-  { value: "steep", label: "Steep Pitch", icon: "🗻", desc: "Good for solar" },
-  { value: "flat", label: "Flat Roof", icon: "🏢", desc: "Works with racking" },
+  { value: "low", label: "Low pitch", desc: "Gentle slope" },
+  { value: "medium", label: "Medium", desc: "Typical residential" },
+  { value: "steep", label: "Steep", desc: "Higher angle" },
+  { value: "flat", label: "Flat", desc: "Commercial / low-slope" },
 ];
 
 const SHADE_OPTIONS = [
-  { value: "none", label: "No Shading", icon: "☀️" },
-  { value: "light", label: "Light Shading", icon: "⛅" },
-  { value: "moderate", label: "Some Trees", icon: "🌤️" },
-  { value: "heavy", label: "Heavy Shade", icon: "☁️" },
+  { value: "none", label: "Little / none", desc: "10am–3pm mostly clear" },
+  { value: "light", label: "Light", desc: "Some trees or obstacles" },
+  { value: "moderate", label: "Moderate", desc: "Noticeable shade periods" },
+  { value: "heavy", label: "Heavy", desc: "Often shaded mid-day" },
 ];
 
 const FINANCING_OPTIONS = [
@@ -126,255 +144,314 @@ function quickEstimate(bill: number): Estimate {
 }
 
 /* ─── Step Components ───────────────────────────────────────────────── */
-function StepZip({ data, update, onNext }: { data: FormData; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void }) {
+function StepAddressEnergy({
+  data,
+  update,
+  onNext,
+}: {
+  data: FormData;
+  update: (k: keyof FormData, v: string | boolean | number | null) => void;
+  onNext: () => void;
+}) {
+  const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
   const [zipInfo, setZipInfo] = useState<ZipInfo | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingZip, setLoadingZip] = useState(false);
   const [error, setError] = useState("");
 
   const lookupZip = useCallback(async (zip: string) => {
     if (zip.length !== 5) return;
-    setLoading(true);
-    setError("");
+    setLoadingZip(true);
     try {
       const res = await fetch(`/api/leads/zip?zip=${zip}`);
       const d = await res.json();
       if (d.state) setZipInfo(d);
-    } catch { /* non-blocking */ }
-    setLoading(false);
+    } catch { /* optional */ }
+    setLoadingZip(false);
   }, []);
 
-  const handleSubmit = () => {
-    if (!/^\d{5}$/.test(data.zipCode)) {
-      setError("Please enter a valid 5-digit ZIP code");
-      return;
-    }
-    onNext();
-  };
-
-  return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 52, marginBottom: 16 }}>📍</div>
-      <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.6rem,4vw,2.4rem)", fontWeight: 900, color: "var(--earth-dark)", marginBottom: 10, letterSpacing: "-0.02em" }}>
-        Where Is Your Home?
-      </h2>
-      <p style={{ color: "var(--text-secondary)", marginBottom: 32, fontSize: "1rem" }}>
-        We&apos;ll find local incentives, rebates, and installer availability in your area.
-      </p>
-
-      <div style={{ maxWidth: 340, margin: "0 auto" }}>
-        <div style={{ position: "relative", marginBottom: 12 }}>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="\d{5}"
-            maxLength={5}
-            value={data.zipCode}
-            placeholder="Enter ZIP Code"
-            onChange={(e) => {
-              const v = e.target.value.replace(/\D/g, "").slice(0, 5);
-              update("zipCode", v);
-              setError("");
-              if (v.length === 5) lookupZip(v);
-            }}
-            onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            style={{
-              width: "100%", padding: "18px 20px", fontSize: "1.4rem",
-              textAlign: "center", letterSpacing: "0.15em", fontWeight: 700,
-              background: "var(--white)", border: error ? "2px solid #ef4444" : "2px solid var(--border)",
-              borderRadius: 16, outline: "none", fontFamily: "var(--font-body)",
-              color: "var(--earth-dark)", transition: "border-color 0.2s",
-            }}
-            onFocus={(e) => { if (!error) e.target.style.borderColor = "var(--sun-flare)"; }}
-            onBlur={(e) => { if (!error) e.target.style.borderColor = "var(--border)"; }}
-          />
-        </div>
-
-        {loading && (
-          <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: 8 }}>
-            🔍 Looking up your area...
-          </div>
-        )}
-
-        {zipInfo?.city && (
-          <div style={{
-            background: "var(--leaf-light)", color: "var(--leaf-green)",
-            borderRadius: 10, padding: "8px 16px", fontSize: "0.9rem",
-            fontWeight: 600, marginBottom: 12,
-          }}>
-            ✓ {zipInfo.city}, {zipInfo.state}
-            {zipInfo.incentives?.stateRebate ? ` · $${zipInfo.incentives.stateRebate.toLocaleString()} state rebate available` : ""}
-          </div>
-        )}
-
-        {error && <p style={{ color: "#ef4444", fontSize: "0.85rem", marginBottom: 8 }}>{error}</p>}
-
-        <button
-          onClick={handleSubmit}
-          disabled={data.zipCode.length !== 5}
-          style={{
-            width: "100%", padding: "16px",
-            background: data.zipCode.length === 5 ? "linear-gradient(135deg, var(--sun-core), var(--sun-glow))" : "var(--border)",
-            color: data.zipCode.length === 5 ? "white" : "var(--text-muted)",
-            fontWeight: 700, fontSize: "1rem", borderRadius: "999px",
-            border: "none", cursor: data.zipCode.length === 5 ? "pointer" : "not-allowed",
-            transition: "all 0.2s ease",
-            boxShadow: data.zipCode.length === 5 ? "0 4px 20px rgba(255,140,0,0.35)" : "none",
-          }}
-        >
-          Check Availability →
-        </button>
-      </div>
-
-      <p style={{ marginTop: 20, fontSize: "0.78rem", color: "var(--text-muted)" }}>
-        🔒 Your info is never shared without permission
-      </p>
-    </div>
+  const applyResolved = useCallback(
+    (p: ResolvedPlace | null) => {
+      setResolved(p);
+      if (!p) {
+        update("placeId", "");
+        update("lat", null);
+        update("lng", null);
+        return;
+      }
+      update("zipCode", p.zipCode);
+      update("formattedAddress", p.formattedAddress);
+      update("streetAddress", p.streetAddress);
+      update("placeId", p.placeId);
+      update("lat", p.lat);
+      update("lng", p.lng);
+      update("city", p.city);
+      update("state", p.state);
+      void lookupZip(p.zipCode);
+    },
+    [update, lookupZip]
   );
-}
-
-function StepQualify({ data, update, onNext, onBack }: { data: FormData; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void }) {
-  const [error, setError] = useState("");
 
   const handleNext = () => {
-    if (data.isHomeowner === null) { setError("Please tell us if you own your home"); return; }
-    if (data.monthlyBill === null) { setError("Please select your monthly electric bill"); return; }
+    if (!resolved) {
+      setError("Please select your full address from the dropdown list.");
+      return;
+    }
+    if (!data.utilityProvider.trim()) {
+      setError("Enter your electric utility or retail provider (e.g. PG&E, Oncor).");
+      return;
+    }
+    if (data.monthlyBill === null) {
+      setError("Select your typical monthly electric bill.");
+      return;
+    }
     setError("");
     onNext();
   };
 
   return (
     <div>
-      <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>⚡</div>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.5rem,4vw,2.2rem)", fontWeight: 900, color: "var(--earth-dark)", letterSpacing: "-0.02em", marginBottom: 8 }}>
-          Tell Us About Your Home
-        </h2>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem" }}>
-          2 quick questions to personalize your estimate
-        </p>
-      </div>
+      <h2
+        style={{
+          fontFamily: "var(--font-brand)",
+          fontSize: "clamp(1.35rem, 3.5vw, 1.85rem)",
+          fontWeight: 700,
+          color: "#0f172a",
+          marginBottom: 8,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        Determine location &amp; usage
+      </h2>
+      <p style={{ color: "#64748b", fontSize: "0.92rem", marginBottom: 20, lineHeight: 1.55 }}>
+        We use your street address to center satellite imagery on your roof. Choose a suggestion from the list — same as professional solar audit tools.
+      </p>
 
-      {/* Homeowner */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-          Do you own your home?
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {[{ label: "Yes, I own it 🏠", value: true }, { label: "No, I rent 🏘️", value: false }].map(opt => (
-            <button
-              key={String(opt.value)}
-              onClick={() => { update("isHomeowner", opt.value); setError(""); }}
-              style={{
-                padding: "18px 16px", borderRadius: 14, fontWeight: 600, fontSize: "0.95rem",
-                border: data.isHomeowner === opt.value ? "2px solid var(--sun-core)" : "2px solid var(--border)",
-                background: data.isHomeowner === opt.value ? "linear-gradient(135deg, #FFF3D0, #FFFBF2)" : "var(--white)",
-                color: data.isHomeowner === opt.value ? "var(--sun-core)" : "var(--text-secondary)",
-                cursor: "pointer", transition: "all 0.2s ease",
-                boxShadow: data.isHomeowner === opt.value ? "0 0 0 4px rgba(255,140,0,0.1)" : "none",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {data.isHomeowner === false && (
-          <div style={{ background: "#FFF3CD", border: "1px solid #FFD700", borderRadius: 10, padding: "12px 16px", marginTop: 12, fontSize: "0.875rem", color: "#856404" }}>
-            💡 Some landlords split the savings with tenants. We can still show you options!
-          </div>
-        )}
-      </div>
+      <PlacesAddressField
+        apiKey={mapsKey}
+        value={data.addressInput}
+        onChangeText={(v) => update("addressInput", v)}
+        onResolved={applyResolved}
+        error={error && !resolved ? error : undefined}
+      />
 
-      {/* Monthly bill */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-          Monthly Electric Bill
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-          {BILL_OPTIONS.map(opt => (
-            <button
-              key={opt.label}
-              onClick={() => { update("monthlyBill", opt.value); setError(""); }}
-              style={{
-                padding: "14px 8px", borderRadius: 12, fontWeight: 600, fontSize: "0.875rem",
-                border: data.monthlyBill === opt.value ? "2px solid var(--sun-core)" : "2px solid var(--border)",
-                background: data.monthlyBill === opt.value ? "linear-gradient(135deg, #FFF3D0, #FFFBF2)" : "var(--white)",
-                color: data.monthlyBill === opt.value ? "var(--sun-core)" : "var(--text-secondary)",
-                cursor: "pointer", transition: "all 0.2s ease",
-                boxShadow: data.monthlyBill === opt.value ? "0 0 0 3px rgba(255,140,0,0.1)" : "none",
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Roof */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-          Roof Pitch (optional but helps accuracy)
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-          {ROOF_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => update("roofSlope", opt.value)}
-              style={{
-                padding: "14px 8px", borderRadius: 12, fontWeight: 600, fontSize: "0.8rem",
-                border: data.roofSlope === opt.value ? "2px solid var(--sun-core)" : "2px solid var(--border)",
-                background: data.roofSlope === opt.value ? "linear-gradient(135deg, #FFF3D0, #FFFBF2)" : "var(--white)",
-                color: data.roofSlope === opt.value ? "var(--sun-core)" : "var(--text-secondary)",
-                cursor: "pointer", transition: "all 0.2s ease", textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 22, marginBottom: 4 }}>{opt.icon}</div>
-              <div>{opt.label}</div>
-              <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontWeight: 400 }}>{opt.desc}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Shading */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-          Shading on Roof (optional)
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-          {SHADE_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => update("shadingLevel", opt.value)}
-              style={{
-                padding: "14px 8px", borderRadius: 12, fontWeight: 600, fontSize: "0.8rem",
-                border: data.shadingLevel === opt.value ? "2px solid var(--sun-core)" : "2px solid var(--border)",
-                background: data.shadingLevel === opt.value ? "linear-gradient(135deg, #FFF3D0, #FFFBF2)" : "var(--white)",
-                color: data.shadingLevel === opt.value ? "var(--sun-core)" : "var(--text-secondary)",
-                cursor: "pointer", transition: "all 0.2s ease", textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 22, marginBottom: 4 }}>{opt.icon}</div>
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {error && <p style={{ color: "#ef4444", fontSize: "0.85rem", textAlign: "center", marginBottom: 12 }}>{error}</p>}
-
-      <div style={{ display: "flex", gap: 12 }}>
-        <button onClick={onBack} style={{ flex: "0 0 auto", padding: "14px 24px", background: "var(--white)", border: "2px solid var(--border)", borderRadius: "999px", fontWeight: 600, cursor: "pointer", color: "var(--text-secondary)", fontSize: "0.95rem" }}>
-          ← Back
-        </button>
-        <button
-          onClick={handleNext}
+      {loadingZip && <p style={{ fontSize: "0.8rem", color: "#64748b" }}>Loading regional incentives…</p>}
+      {zipInfo?.city && (
+        <div
           style={{
-            flex: 1, padding: "16px", background: "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
-            color: "white", fontWeight: 700, fontSize: "1rem", borderRadius: "999px",
-            border: "none", cursor: "pointer", boxShadow: "0 4px 20px rgba(255,140,0,0.35)",
+            background: "#ecfdf5",
+            color: "#166534",
+            borderRadius: 8,
+            padding: "10px 14px",
+            fontSize: "0.88rem",
+            fontWeight: 600,
+            marginBottom: 16,
           }}
         >
-          See My Estimate →
+          {zipInfo.city}, {zipInfo.state}
+          {zipInfo.incentives?.stateRebate
+            ? ` · up to $${zipInfo.incentives.stateRebate.toLocaleString()} state programs in some areas`
+            : ""}
+        </div>
+      )}
+
+      <label style={{ display: "block", fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 8 }}>
+        Electric utility / provider
+      </label>
+      <input
+        type="text"
+        placeholder="e.g. Austin Energy, ComEd, SDG&amp;E"
+        value={data.utilityProvider}
+        onChange={(e) => update("utilityProvider", e.target.value)}
+        style={{
+          width: "100%",
+          padding: "14px 16px",
+          fontSize: "1rem",
+          border: "2px solid #e2e8f0",
+          borderRadius: 6,
+          marginBottom: 20,
+          fontFamily: "var(--font-brand)",
+        }}
+      />
+
+      <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
+        Typical monthly electric bill
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 20 }}>
+        {BILL_OPTIONS.map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            onClick={() => {
+              update("monthlyBill", opt.value);
+              setError("");
+            }}
+            style={{
+              padding: "12px 6px",
+              borderRadius: 8,
+              fontWeight: 600,
+              fontSize: "0.82rem",
+              border: data.monthlyBill === opt.value ? "2px solid #ea580c" : "2px solid #e2e8f0",
+              background: data.monthlyBill === opt.value ? "#fff7ed" : "white",
+              color: data.monthlyBill === opt.value ? "#c2410c" : "#475569",
+              cursor: "pointer",
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {error && resolved && <p style={{ color: "#dc2626", fontSize: "0.85rem", marginBottom: 12 }}>{error}</p>}
+
+      <button
+        type="button"
+        onClick={handleNext}
+        style={{
+          width: "100%",
+          padding: "16px",
+          background: "#ea580c",
+          color: "white",
+          fontWeight: 700,
+          fontSize: "1rem",
+          borderRadius: 6,
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        Next →
+      </button>
+    </div>
+  );
+}
+
+function StepProperty({ data, update, onNext, onBack }: { data: FormData; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void }) {
+  const [error, setError] = useState("");
+
+  if (data.isHomeowner === false) {
+    return (
+      <div>
+        <h2 style={{ fontFamily: "var(--font-brand)", fontSize: "1.5rem", fontWeight: 700, color: "#0f172a", marginBottom: 12 }}>
+          Thanks for your interest
+        </h2>
+        <p style={{ color: "#475569", fontSize: "0.95rem", lineHeight: 1.6, marginBottom: 24 }}>
+          SolarAdvisor connects <strong>property owners</strong> with vetted solar specialists. If you are not the owner or authorized decision-maker for this property, we cannot continue this estimate.
+        </p>
+        <Link href="/" style={{ display: "inline-block", color: "#2563eb", fontWeight: 600 }}>
+          ← Back to home
+        </Link>
+      </div>
+    );
+  }
+
+  const handleNext = () => {
+    if (data.isHomeowner === null) {
+      setError("Please indicate whether you own this property.");
+      return;
+    }
+    setError("");
+    onNext();
+  };
+
+  const btn = (active: boolean): CSSProperties => ({
+    padding: "14px 12px",
+    borderRadius: 8,
+    fontWeight: 600,
+    fontSize: "0.88rem",
+    border: active ? "2px solid #ea580c" : "2px solid #e2e8f0",
+    background: active ? "#fff7ed" : "white",
+    color: active ? "#c2410c" : "#475569",
+    cursor: "pointer",
+    textAlign: "center",
+  });
+
+  return (
+    <div>
+      <h2 style={{ fontFamily: "var(--font-brand)", fontSize: "clamp(1.35rem, 3.5vw, 1.85rem)", fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>
+        Property details
+      </h2>
+      <p style={{ color: "#64748b", fontSize: "0.9rem", marginBottom: 22, lineHeight: 1.55 }}>
+        Eligibility and roof context for <strong>{data.formattedAddress || "your property"}</strong>.
+      </p>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
+          Do you own this property or have authority to install solar?
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <button type="button" onClick={() => { update("isHomeowner", true); setError(""); }} style={btn(data.isHomeowner === true)}>
+            Yes
+          </button>
+          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(false)}>
+            No
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
+          Building type
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <button type="button" onClick={() => update("buildingType", "residential")} style={btn(data.buildingType === "residential")}>
+            Residential
+          </button>
+          <button type="button" onClick={() => update("buildingType", "commercial")} style={btn(data.buildingType === "commercial")}>
+            Commercial
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
+          Stories (optional)
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <button type="button" onClick={() => update("stories", "one")} style={btn(data.stories === "one")}>
+            One story
+          </button>
+          <button type="button" onClick={() => update("stories", "two_plus")} style={btn(data.stories === "two_plus")}>
+            Two or more
+          </button>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
+          Roof pitch (optional)
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+          {ROOF_OPTIONS.map((opt) => (
+            <button key={opt.value} type="button" onClick={() => update("roofSlope", opt.value)} style={btn(data.roofSlope === opt.value)}>
+              <div>{opt.label}</div>
+              <div style={{ fontSize: "0.72rem", color: "#94a3b8", fontWeight: 500 }}>{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
+          Mid-day shading (optional)
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+          {SHADE_OPTIONS.map((opt) => (
+            <button key={opt.value} type="button" onClick={() => update("shadingLevel", opt.value)} style={btn(data.shadingLevel === opt.value)}>
+              <div>{opt.label}</div>
+              <div style={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 500 }}>{opt.desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && <p style={{ color: "#dc2626", fontSize: "0.85rem", marginBottom: 12 }}>{error}</p>}
+
+      <div style={{ display: "flex", gap: 12 }}>
+        <button type="button" onClick={onBack} style={{ flex: "0 0 auto", padding: "14px 20px", background: "white", border: "2px solid #e2e8f0", borderRadius: 6, fontWeight: 600, cursor: "pointer", color: "#64748b" }}>
+          ← Back
+        </button>
+        <button type="button" onClick={handleNext} style={{ flex: 1, padding: "16px", background: "#ea580c", color: "white", fontWeight: 700, fontSize: "1rem", borderRadius: 6, border: "none", cursor: "pointer" }}>
+          Next →
         </button>
       </div>
     </div>
@@ -387,11 +464,13 @@ function StepEstimate({ data, estimate, update, onNext, onBack }: { data: FormDa
   return (
     <div>
       <div style={{ textAlign: "center", marginBottom: 24 }}>
-        <div style={{ fontSize: 44, marginBottom: 10 }}>📊</div>
-        <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.5rem,4vw,2.2rem)", fontWeight: 900, color: "var(--earth-dark)", letterSpacing: "-0.02em", marginBottom: 6 }}>
-          Your Solar Estimate
+        <h2 style={{ fontFamily: "var(--font-brand)", fontSize: "clamp(1.35rem, 3.5vw, 1.85rem)", fontWeight: 700, color: "#0f172a", letterSpacing: "-0.02em", marginBottom: 6 }}>
+          Your solar estimate
         </h2>
-        <p style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Based on your ${data.monthlyBill}/mo bill · {data.zipCode}</p>
+        <p style={{ color: "#64748b", fontSize: "0.9rem", lineHeight: 1.5 }}>
+          ${data.monthlyBill}/mo bill · {data.utilityProvider && <>{data.utilityProvider} · </>}
+          {data.formattedAddress ? data.formattedAddress.split(",").slice(-2).join(",").trim() : `ZIP ${data.zipCode}`}
+        </p>
       </div>
 
       {/* Savings hero */}
@@ -419,33 +498,34 @@ function StepEstimate({ data, estimate, update, onNext, onBack }: { data: FormDa
       {/* System specs */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
         {[
-          { icon: "⚡", val: `${estimate.systemKw} kW`, label: "System Size" },
-          { icon: "🔲", val: `${estimate.panels}`, label: "Panels" },
-          { icon: "📅", val: `${estimate.roiYears} yrs`, label: "Payback" },
-        ].map(s => (
-          <div key={s.label} style={{ background: "var(--white)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px 10px", textAlign: "center" }}>
-            <div style={{ fontSize: 24, marginBottom: 6 }}>{s.icon}</div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.2rem", color: "var(--sun-core)" }}>{s.val}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</div>
+          { val: `${estimate.systemKw} kW`, label: "System size" },
+          { val: `${estimate.panels}`, label: "Panels" },
+          { val: `${estimate.roiYears} yrs`, label: "Simple payback" },
+        ].map((s) => (
+          <div key={s.label} style={{ background: "var(--white)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "16px 10px", textAlign: "center" }}>
+            <div style={{ fontFamily: "var(--font-brand)", fontWeight: 700, fontSize: "1.15rem", color: "#c2410c" }}>{s.val}</div>
+            <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600, marginTop: 4 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* ── Satellite roof overlay ── */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-          <span>🛰️</span> Your Roof · {data.zipCode}
+        <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+          Roof preview · satellite
         </div>
         <SatelliteRoof
           zipCode={data.zipCode}
           panels={estimate.panels}
           systemKw={estimate.systemKw}
+          lat={data.lat}
+          lng={data.lng}
         />
       </div>
 
       {/* Federal credit callout */}
-      <div style={{ background: "var(--leaf-light)", borderRadius: 14, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 28, flexShrink: 0 }}>🏛️</span>
+      <div style={{ background: "#ecfdf5", borderRadius: 10, padding: "14px 18px", marginBottom: 20, border: "1px solid #bbf7d0" }}>
+        <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#166534", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Federal incentive</div>
         <div>
           <div style={{ fontWeight: 700, color: "var(--leaf-green)", fontSize: "0.9rem" }}>
             30% Federal Tax Credit Available
@@ -746,11 +826,23 @@ export default function FunnelPage() {
   const [estimate, setEstimate] = useState<Estimate | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
+    addressInput: "",
+    formattedAddress: "",
+    streetAddress: "",
+    placeId: "",
+    lat: null,
+    lng: null,
+    city: "",
+    state: "",
     zipCode: "",
+    utilityProvider: "",
+    buildingType: "residential",
+    stories: "",
     isHomeowner: null,
     monthlyBill: null,
     roofSlope: "",
     shadingLevel: "",
+    roofType: "",
     isDecisionMaker: true,
     preferredFinancing: "lease",
     firstName: "",
@@ -794,21 +886,51 @@ export default function FunnelPage() {
     setSubmitError("");
 
     try {
+      const qs = new URLSearchParams(window.location.search);
+      const payload = {
+        zipCode: formData.zipCode,
+        formattedAddress: formData.formattedAddress,
+        streetAddress: formData.streetAddress || undefined,
+        placeId: formData.placeId,
+        latitude: formData.lat ?? undefined,
+        longitude: formData.lng ?? undefined,
+        city: formData.city || undefined,
+        state: formData.state || undefined,
+        utilityProvider: formData.utilityProvider.trim(),
+        buildingType: formData.buildingType,
+        stories: formData.stories || undefined,
+        isHomeowner: true as const,
+        monthlyBill: formData.monthlyBill!,
+        roofSlope: formData.roofSlope || undefined,
+        shadingLevel: formData.shadingLevel || undefined,
+        roofType: formData.roofType || undefined,
+        isDecisionMaker: formData.isDecisionMaker,
+        preferredFinancing: formData.preferredFinancing,
+        firstName: formData.firstName.trim(),
+        lastName: formData.lastName.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone,
+        contactPreference: formData.contactPreference,
+        consentGiven: formData.consentGiven,
+        utmSource: qs.get("utm_source") || undefined,
+        utmMedium: qs.get("utm_medium") || undefined,
+        utmCampaign: qs.get("utm_campaign") || undefined,
+      };
+
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          utmSource: new URLSearchParams(window.location.search).get("utm_source") || undefined,
-          utmMedium: new URLSearchParams(window.location.search).get("utm_medium") || undefined,
-          utmCampaign: new URLSearchParams(window.location.search).get("utm_campaign") || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        setSubmitError(data.error || "Something went wrong. Please try again.");
+        const msg =
+          data.details?.fieldErrors
+            ? Object.values(data.details.fieldErrors).flat().join(" ")
+            : data.error || data.detail || "Something went wrong. Please try again.";
+        setSubmitError(typeof msg === "string" ? msg : "Something went wrong. Please try again.");
         return;
       }
 
@@ -822,27 +944,33 @@ export default function FunnelPage() {
 
   const progress = (step / TOTAL_STEPS) * 100;
 
-  const stepLabels = ["Location", "Qualify", "Estimate", "Contact", "Done"];
+  const stepLabels = ["Location", "Property", "Estimate", "Contact"];
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--sun-bg)", fontFamily: "var(--font-body)" }}>
+    <div style={{ position: "relative", minHeight: "100vh", fontFamily: "var(--font-brand)" }}>
+      <Image
+        src={FUNNEL_MAP_BG}
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        style={{ objectFit: "cover" }}
+      />
+      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)", pointerEvents: "none" }} aria-hidden />
+
+      <div style={{ position: "relative", zIndex: 2 }}>
       {/* Top bar */}
       <div style={{
-        background: "var(--white)", borderBottom: "1px solid var(--border)",
+        background: "rgba(255,255,255,0.97)", borderBottom: "1px solid #e2e8f0",
         padding: "14px clamp(16px,4vw,40px)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-          <span style={{ fontSize: 24 }}>☀</span>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "1.1rem", color: "var(--earth-dark)" }}>SolarAdvisor</span>
-        </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>🔒 Secure · Free · No Obligation</span>
-        </div>
+        <BrandLogo />
+        <span style={{ fontSize: "0.75rem", color: "#64748b", fontWeight: 600 }}>Secure · Free estimate</span>
       </div>
 
       {/* Progress */}
-      <div style={{ background: "var(--white)", padding: "16px clamp(16px,4vw,40px)", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ background: "rgba(255,255,255,0.96)", padding: "16px clamp(16px,4vw,40px)", borderBottom: "1px solid #e2e8f0" }}>
         <div style={{ maxWidth: 560, margin: "0 auto" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
             {stepLabels.map((label, i) => (
@@ -858,7 +986,7 @@ export default function FunnelPage() {
             <div style={{
               height: "100%",
               width: `${progress}%`,
-              background: "linear-gradient(90deg, var(--sun-core), var(--sun-glow))",
+              background: "#ea580c",
               borderRadius: "999px",
               transition: "width 0.5s cubic-bezier(0.34,1.56,0.64,1)",
             }} />
@@ -872,12 +1000,11 @@ export default function FunnelPage() {
       {/* Form card */}
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "clamp(24px,4vw,48px) clamp(16px,4vw,24px)" }}>
         <div style={{
-          background: "var(--white)", borderRadius: 24, padding: "clamp(24px,5vw,40px)",
-          border: "1px solid var(--border)", boxShadow: "0 12px 48px rgba(255,140,0,0.1), 0 4px 16px rgba(0,0,0,0.06)",
-          animation: "sunRise 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards",
+          background: "rgba(255,255,255,0.98)", borderRadius: 12, padding: "clamp(24px,5vw,40px)",
+          border: "1px solid #e2e8f0", boxShadow: "0 25px 50px rgba(0,0,0,0.2)",
         }}>
-          {step === 1 && <StepZip data={formData} update={update} onNext={goNext} />}
-          {step === 2 && <StepQualify data={formData} update={update} onNext={goNext} onBack={goBack} />}
+          {step === 1 && <StepAddressEnergy data={formData} update={update} onNext={goNext} />}
+          {step === 2 && <StepProperty data={formData} update={update} onNext={goNext} onBack={goBack} />}
           {step === 3 && estimate && <StepEstimate data={formData} estimate={estimate} update={update} onNext={goNext} onBack={goBack} />}
           {step === 4 && (
             <StepContact
@@ -905,6 +1032,7 @@ export default function FunnelPage() {
 
       {/* Live chat — available throughout funnel */}
       <LiveChat />
+      </div>
     </div>
   );
 }

@@ -67,6 +67,16 @@ function makeRequest(body: unknown, method = "POST", searchParams?: Record<strin
 
 const VALID_LEAD_BODY = {
   zipCode: "78701",
+  formattedAddress: "123 Main St, Austin, TX 78701, USA",
+  streetAddress: "123 Main St",
+  placeId: "ChIJTestPlaceIdSolarAdvisor01",
+  latitude: 30.27,
+  longitude: -97.74,
+  city: "Austin",
+  state: "TX",
+  utilityProvider: "Austin Energy",
+  buildingType: "residential",
+  stories: "one",
   isHomeowner: true,
   monthlyBill: 250,
   roofSlope: "medium",
@@ -175,14 +185,11 @@ describe("POST /api/leads", () => {
     expect(["hot", "medium"]).toContain(data.tier);
   });
 
-  test("non-homeowner still processes (scores cold)", async () => {
+  test("non-homeowner rejected at validation", async () => {
     const { POST } = await import("@/app/api/leads/route");
     const req = makeRequest({ ...VALID_LEAD_BODY, isHomeowner: false }) as Parameters<typeof POST>[0];
     const res = await POST(req);
-    const data = await res.json();
-    expect(res.status).toBe(200);
-    expect(data.tier).toBe("cold");
-    expect(data.score).toBe(0);
+    expect(res.status).toBe(400);
   });
 
   test("500 is returned if DB throws", async () => {

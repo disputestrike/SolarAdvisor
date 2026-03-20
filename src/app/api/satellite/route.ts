@@ -110,50 +110,54 @@ function generatePanelOverlaySVG(
 // ─── Route ─────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const zip = req.nextUrl.searchParams.get("zip");
+  const latParam = req.nextUrl.searchParams.get("lat");
+  const lngParam = req.nextUrl.searchParams.get("lng");
   const panels = parseInt(req.nextUrl.searchParams.get("panels") || "20");
-
-  if (!zip || !/^\d{5}$/.test(zip)) {
-    return NextResponse.json({ error: "Valid ZIP required" }, { status: 400 });
-  }
 
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 
-  // Try DB cache first
   let lat: number | null = null;
   let lng: number | null = null;
   let city: string | null = null;
   let state: string | null = null;
 
-  try {
-    const cached = await q1<{ lat: string; lng: string; city: string; state: string }>(
-      "SELECT lat, lng, city, state FROM zip_cache WHERE zip_code = ? LIMIT 1",
-      [zip]
-    );
-    if (cached?.lat) {
-      lat = parseFloat(cached.lat);
-      lng = parseFloat(cached.lng);
-      city = cached.city;
-      state = cached.state;
-    }
-  } catch { /* non-blocking */ }
+  const latN = latParam != null ? parseFloat(latParam) : NaN;
+  const lngN = lngParam != null ? parseFloat(lngParam) : NaN;
+  if (!Number.isNaN(latN) && !Number.isNaN(lngN)) {
+    lat = latN;
+    lng = lngN;
+  } else if (zip && /^\d{5}$/.test(zip)) {
+    try {
+      const cached = await q1<{ lat: string; lng: string; city: string; state: string }>(
+        "SELECT lat, lng, city, state FROM zip_cache WHERE zip_code = ? LIMIT 1",
+        [zip]
+      );
+      if (cached?.lat) {
+        lat = parseFloat(cached.lat);
+        lng = parseFloat(cached.lng);
+        city = cached.city;
+        state = cached.state;
+      }
+    } catch { /* non-blocking */ }
 
-  // If not in cache, geocode
-  if (!lat && key) {
-    const geo = await geocodeZip(zip);
-    if (geo) {
-      lat = geo.lat;
-      lng = geo.lng;
+    if (!lat && key) {
+      const geo = await geocodeZip(zip);
+      if (geo) {
+        lat = geo.lat;
+        lng = geo.lng;
 
-      // Cache it
-      try {
-        await import("@/db").then(({ qExec }) =>
-          qExec(
-            "INSERT IGNORE INTO zip_cache (zip_code, lat, lng) VALUES (?, ?, ?)",
-            [zip, lat!, lng!]
-          )
-        );
-      } catch { /* best effort */ }
+        try {
+          await import("@/db").then(({ qExec }) =>
+            qExec(
+              "INSERT IGNORE INTO zip_cache (zip_code, lat, lng) VALUES (?, ?, ?)",
+              [zip, lat!, lng!]
+            )
+          );
+        } catch { /* best effort */ }
+      }
     }
+  } else {
+    return NextResponse.json({ error: "Provide a valid 5-digit ZIP or lat & lng" }, { status: 400 });
   }
 
   // Get Solar API data if we have coords + key
@@ -181,7 +185,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    zip,
+    zip: zip || "",
     city,
     state,
     lat,

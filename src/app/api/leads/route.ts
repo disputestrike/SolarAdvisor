@@ -17,18 +17,23 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data;
 
-    // ZIP → state lookup
-    let city: string | undefined;
-    let state: string | undefined;
+    // Location → state incentives (prefer address from Places; fallback ZIP cache)
+    let city: string | undefined = data.city ?? undefined;
+    let state: string | undefined = data.state ?? undefined;
     let avgSunHours = 5.0;
     let avgKwhCost = 0.13;
 
     try {
-      const zipRow = await q1<{ city: string; state: string }>(
-        "SELECT city, state FROM zip_cache WHERE zip_code = ? LIMIT 1",
-        [data.zipCode]
-      );
-      if (zipRow) { city = zipRow.city; state = zipRow.state; }
+      if (!state || !city) {
+        const zipRow = await q1<{ city: string; state: string }>(
+          "SELECT city, state FROM zip_cache WHERE zip_code = ? LIMIT 1",
+          [data.zipCode]
+        );
+        if (zipRow) {
+          city = city ?? zipRow.city;
+          state = state ?? zipRow.state;
+        }
+      }
 
       if (state) {
         const inc = await q1<{ avg_sun_hours: string; avg_electricity_cost: string }>(
@@ -59,11 +64,15 @@ export async function POST(req: NextRequest) {
       "unknown";
     const userAgent = req.headers.get("user-agent") || "";
 
-    // Insert lead with raw SQL to avoid drizzle enum issues
+    const phoneE164 = formatPhone(data.phone);
+
+    // Insert lead (run migrate_lead_address_utility.sql on MySQL if these columns are missing)
     const { insertId: leadId } = await qExec(
       `INSERT INTO leads (
         first_name, last_name, email, phone, contact_preference,
-        zip_code, city, state, is_homeowner, monthly_bill,
+        zip_code, street_address, formatted_address, latitude, longitude, place_id,
+        utility_provider, building_type, stories,
+        city, state, is_homeowner, monthly_bill,
         roof_type, roof_slope, shading_level, is_decision_maker,
         estimated_system_kw, estimated_panels, estimated_monthly_savings,
         estimated_annual_savings, estimated_roi, preferred_financing,
@@ -72,20 +81,45 @@ export async function POST(req: NextRequest) {
         ip_address, user_agent, referrer,
         consent_given, consent_text,
         webhook_sent
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        data.firstName, data.lastName, data.email, formatPhone(data.phone),
+        data.firstName,
+        data.lastName,
+        data.email,
+        phoneE164,
         data.contactPreference,
-        data.zipCode, city ?? null, state ?? null,
-        data.isHomeowner ? 1 : 0, data.monthlyBill,
-        data.roofType ?? null, data.roofSlope ?? null, data.shadingLevel ?? null,
+        data.zipCode,
+        data.streetAddress ?? null,
+        data.formattedAddress,
+        data.latitude ?? null,
+        data.longitude ?? null,
+        data.placeId,
+        data.utilityProvider,
+        data.buildingType ?? null,
+        data.stories ?? null,
+        city ?? null,
+        state ?? null,
+        data.isHomeowner ? 1 : 0,
+        data.monthlyBill,
+        data.roofType ?? null,
+        data.roofSlope ?? null,
+        data.shadingLevel ?? null,
         (data.isDecisionMaker ?? true) ? 1 : 0,
-        estimate.systemKw, estimate.panels, estimate.monthlySavings,
-        estimate.annualSavings, estimate.roiYears,
+        estimate.systemKw,
+        estimate.panels,
+        estimate.monthlySavings,
+        estimate.annualSavings,
+        estimate.roiYears,
         data.preferredFinancing ?? "undecided",
-        finalScore.score, finalScore.tier, "new",
-        data.utmSource ?? null, data.utmMedium ?? null, data.utmCampaign ?? null,
-        ipAddress, userAgent, req.headers.get("referer") ?? "",
+        finalScore.score,
+        finalScore.tier,
+        "new",
+        data.utmSource ?? null,
+        data.utmMedium ?? null,
+        data.utmCampaign ?? null,
+        ipAddress,
+        userAgent,
+        req.headers.get("referer") ?? "",
         data.consentGiven ? 1 : 0,
         "I consent to be contacted by SolarAdvisor about my solar estimate.",
         0,
@@ -146,7 +180,20 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("[Lead API]", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const detail = err instanceof Error ? err.message : String(err);
+    if (detail.includes("Unknown column") && process.env.NODE_ENV !== "production") {
+      return NextResponse.json(
+        {
+          error: "Database missing new columns. Run migrate_lead_address_utility.sql on MySQL.",
+          detail,
+        },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json(
+      { error: "Internal server error", detail: process.env.NODE_ENV === "development" ? detail : undefined },
+      { status: 500 }
+    );
   }
 }
 

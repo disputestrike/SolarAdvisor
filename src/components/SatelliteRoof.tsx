@@ -6,6 +6,9 @@ interface SatelliteRoofProps {
   zipCode: string;
   panels?: number;
   systemKw?: number;
+  /** When set with lng, API uses roof-centered coordinates from Places */
+  lat?: number | null;
+  lng?: number | null;
   onRoofData?: (data: RoofData) => void;
 }
 
@@ -23,7 +26,7 @@ interface RoofData {
   satellite: { imageUrl: string | null };
 }
 
-export default function SatelliteRoof({ zipCode, panels = 20, systemKw, onRoofData }: SatelliteRoofProps) {
+export default function SatelliteRoof({ zipCode, panels = 20, systemKw, lat, lng, onRoofData }: SatelliteRoofProps) {
   const [data, setData] = useState<RoofData | null>(null);
   const [loading, setLoading] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(true);
@@ -39,7 +42,13 @@ export default function SatelliteRoof({ zipCode, panels = 20, systemKw, onRoofDa
     if (!zipCode || zipCode.length !== 5) return;
     setLoading(true);
 
-    fetch(`/api/satellite?zip=${zipCode}&panels=${panels}`)
+    const q = new URLSearchParams({ zip: zipCode, panels: String(panels) });
+    if (lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+      q.set("lat", String(lat));
+      q.set("lng", String(lng));
+    }
+
+    fetch(`/api/satellite?${q.toString()}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.success) {
@@ -49,7 +58,7 @@ export default function SatelliteRoof({ zipCode, panels = 20, systemKw, onRoofDa
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [zipCode, panels, notifyRoof]);
+  }, [zipCode, panels, lat, lng, notifyRoof]);
 
   const hasGoogleKey = data?.satellite?.imageUrl;
 

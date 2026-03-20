@@ -26,6 +26,14 @@ export const leads = mysqlTable(
 
     // Location & Qualification
     zipCode: varchar("zip_code", { length: 10 }).notNull(),
+    streetAddress: varchar("street_address", { length: 255 }),
+    formattedAddress: text("formatted_address"),
+    latitude: decimal("latitude", { precision: 10, scale: 7 }),
+    longitude: decimal("longitude", { precision: 10, scale: 7 }),
+    placeId: varchar("place_id", { length: 255 }),
+    utilityProvider: varchar("utility_provider", { length: 255 }),
+    buildingType: varchar("building_type", { length: 32 }),
+    stories: varchar("stories", { length: 32 }),
     state: varchar("state", { length: 2 }),
     city: varchar("city", { length: 100 }),
     isHomeowner: boolean("is_homeowner").notNull(),

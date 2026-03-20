@@ -2,6 +2,16 @@ import { leadSchema, adminLoginSchema, leadUpdateSchema } from "@/lib/validation
 
 const VALID_LEAD = {
   zipCode: "78701",
+  formattedAddress: "123 Main St, Austin, TX 78701, USA",
+  streetAddress: "123 Main St",
+  placeId: "ChIJTestPlaceIdSolarAdvisor01",
+  latitude: 30.27,
+  longitude: -97.74,
+  city: "Austin",
+  state: "TX",
+  utilityProvider: "Austin Energy",
+  buildingType: "residential" as const,
+  stories: "one" as const,
   isHomeowner: true,
   monthlyBill: 200,
   roofSlope: "medium" as const,
