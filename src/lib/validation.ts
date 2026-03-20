@@ -25,7 +25,20 @@ export const leadSchema = z.object({
 
   utilityProvider: z.string().min(2, "Electric utility / provider is required").max(200),
 
-  buildingType: z.enum(["residential", "commercial"]).optional().default("residential"),
+  buildingType: z
+    .enum([
+      "residential",
+      "commercial",
+      "government",
+      "education",
+      "agriculture",
+      "industrial",
+      "multifamily",
+      "mixed_use",
+      "other",
+    ])
+    .optional()
+    .default("residential"),
   stories: z.enum(["one", "two_plus"]).optional(),
 
   // Qualification

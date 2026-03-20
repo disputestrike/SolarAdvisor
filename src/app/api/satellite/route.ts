@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
   const zip = req.nextUrl.searchParams.get("zip");
   const latParam = req.nextUrl.searchParams.get("lat");
   const lngParam = req.nextUrl.searchParams.get("lng");
-  const panels = parseInt(req.nextUrl.searchParams.get("panels") || "20");
+  const requestedPanels = parseInt(req.nextUrl.searchParams.get("panels") || "20");
 
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 
@@ -179,8 +179,17 @@ export async function GET(req: NextRequest) {
   // Satellite image URL (served directly to client)
   const satelliteUrl = lat && lng && key ? getSatelliteImageUrl(lat, lng) : null;
 
-  // Panel overlay SVG
-  const panelCount = Math.min(panels, maxPanels);
+  // Build a location-based suggestion so ZIP/address changes produce distinct panel counts.
+  const roofCapacityPanels = Math.max(6, Math.round(roofAreaM2 / 2.2));
+  const sunshineFactor = Math.max(0.8, Math.min(1.2, annualSunshine / 1600));
+  const suggestedPanels = Math.max(
+    6,
+    Math.min(maxPanels, Math.round(roofCapacityPanels * sunshineFactor))
+  );
+  const panelCount = Math.max(
+    6,
+    Math.min(maxPanels, Number.isFinite(requestedPanels) ? requestedPanels : suggestedPanels, suggestedPanels)
+  );
   const overlaySvg = generatePanelOverlaySVG(panelCount, roofAreaM2);
 
   return NextResponse.json({
@@ -199,7 +208,7 @@ export async function GET(req: NextRequest) {
       areaM2: Math.round(roofAreaM2),
       maxPanels,
       annualSunshineHours: Math.round(annualSunshine),
-      panelsSuggested: panelCount,
+      panelsSuggested: suggestedPanels,
     },
     overlay: {
       svg: overlaySvg,

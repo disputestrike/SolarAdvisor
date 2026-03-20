@@ -26,7 +26,16 @@ interface FormData {
   state: string;
   zipCode: string;
   utilityProvider: string;
-  buildingType: "residential" | "commercial";
+  buildingType:
+    | "residential"
+    | "commercial"
+    | "government"
+    | "education"
+    | "agriculture"
+    | "industrial"
+    | "multifamily"
+    | "mixed_use"
+    | "other";
   stories: "one" | "two_plus" | "";
   isHomeowner: boolean | null;
   monthlyBill: number | null;
@@ -84,6 +93,21 @@ const SHADE_OPTIONS = [
   { value: "light", label: "Light", desc: "Some trees or obstacles" },
   { value: "moderate", label: "Moderate", desc: "Noticeable shade periods" },
   { value: "heavy", label: "Heavy", desc: "Often shaded mid-day" },
+];
+
+const BUILDING_TYPE_OPTIONS: Array<{
+  value: FormData["buildingType"];
+  label: string;
+}> = [
+  { value: "residential", label: "Residential" },
+  { value: "commercial", label: "Commercial" },
+  { value: "government", label: "Government" },
+  { value: "education", label: "Education" },
+  { value: "agriculture", label: "Agriculture" },
+  { value: "industrial", label: "Industrial" },
+  { value: "multifamily", label: "Multifamily" },
+  { value: "mixed_use", label: "Mixed use" },
+  { value: "other", label: "Other" },
 ];
 
 const FINANCING_OPTIONS = [
@@ -392,13 +416,12 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
         <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
           Building type
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <button type="button" onClick={() => update("buildingType", "residential")} style={btn(data.buildingType === "residential")}>
-            Residential
-          </button>
-          <button type="button" onClick={() => update("buildingType", "commercial")} style={btn(data.buildingType === "commercial")}>
-            Commercial
-          </button>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+          {BUILDING_TYPE_OPTIONS.map((opt) => (
+            <button key={opt.value} type="button" onClick={() => update("buildingType", opt.value)} style={btn(data.buildingType === opt.value)}>
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
 

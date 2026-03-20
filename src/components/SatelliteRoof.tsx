@@ -24,6 +24,7 @@ interface RoofData {
     panelsSuggested: number;
   };
   satellite: { imageUrl: string | null };
+  overlay?: { panelCount?: number };
 }
 
 export default function SatelliteRoof({ zipCode, panels = 20, systemKw, lat, lng, onRoofData }: SatelliteRoofProps) {
@@ -138,7 +139,7 @@ export default function SatelliteRoof({ zipCode, panels = 20, systemKw, lat, lng
               color: "#4FC3F7", fontSize: "0.72rem", fontWeight: 700,
               fontFamily: "var(--font-body)",
             }}>
-              {panels} panels visualized
+              {(data.overlay?.panelCount ?? data.roof.panelsSuggested ?? panels)} panels visualized
             </div>
           </div>
         </div>

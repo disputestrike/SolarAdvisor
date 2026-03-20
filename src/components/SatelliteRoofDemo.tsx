@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import SatelliteRoof from "./SatelliteRoof";
 
 export default function SatelliteRoofDemo() {
@@ -8,10 +8,25 @@ export default function SatelliteRoofDemo() {
   const [activeZip, setActiveZip] = useState("90210");
   const [panels, setPanels] = useState(20);
 
+  useEffect(() => {
+    if (!/^\d{5}$/.test(zip) || zip === activeZip) return;
+    const timer = window.setTimeout(() => setActiveZip(zip), 350);
+    return () => window.clearTimeout(timer);
+  }, [zip, activeZip]);
+
   return (
     <div>
       {/* Satellite view */}
-      <SatelliteRoof zipCode={activeZip} panels={panels} systemKw={panels * 0.4} />
+      <SatelliteRoof
+        zipCode={activeZip}
+        panels={panels}
+        systemKw={panels * 0.4}
+        onRoofData={(d) => {
+          if (d.roof?.panelsSuggested && d.roof.panelsSuggested > 0) {
+            setPanels(d.roof.panelsSuggested);
+          }
+        }}
+      />
 
       {/* Interactive controls */}
       <div style={{
@@ -61,20 +76,22 @@ export default function SatelliteRoofDemo() {
             <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 5 }}>
               Panels
             </label>
-            <select
-              value={panels}
-              onChange={(e) => setPanels(parseInt(e.target.value))}
+            <div
               style={{
-                padding: "10px 12px", borderRadius: 10,
-                border: "2px solid var(--border)", background: "var(--white)",
-                fontSize: "0.9rem", outline: "none", cursor: "pointer",
-                fontFamily: "var(--font-body)", color: "var(--earth-dark)",
+                minWidth: 118,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "2px solid var(--border)",
+                background: "var(--white)",
+                fontSize: "0.9rem",
+                fontWeight: 700,
+                fontFamily: "var(--font-body)",
+                color: "var(--earth-dark)",
+                textAlign: "center",
               }}
             >
-              {[8, 12, 16, 20, 24, 28, 32].map(n => (
-                <option key={n} value={n}>{n} panels</option>
-              ))}
-            </select>
+              {panels} panels
+            </div>
           </div>
         </div>
 
