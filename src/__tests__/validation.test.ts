@@ -24,7 +24,7 @@ describe("leadSchema", () => {
   });
 
   test("optional fields can be omitted", () => {
-    const { roofSlope, shadingLevel, roofType, ...minimal } = VALID_LEAD as typeof VALID_LEAD & { roofType?: string };
+    const { roofSlope: _roofSlope, shadingLevel: _shadingLevel, roofType: _roofType, ...minimal } = VALID_LEAD as typeof VALID_LEAD & { roofType?: string };
     const result = leadSchema.safeParse(minimal);
     expect(result.success).toBe(true);
   });
@@ -115,7 +115,7 @@ describe("leadSchema", () => {
 
   // ─── Default values ──────────────────────────────────────────────────────
   test("contactPreference defaults to call", () => {
-    const { contactPreference, ...rest } = VALID_LEAD;
+    const { contactPreference: _contactPreference, ...rest } = VALID_LEAD;
     const r = leadSchema.safeParse(rest);
     if (r.success) {
       expect(r.data.contactPreference).toBe("call");
@@ -123,7 +123,7 @@ describe("leadSchema", () => {
   });
 
   test("isDecisionMaker defaults to true", () => {
-    const { isDecisionMaker, ...rest } = VALID_LEAD;
+    const { isDecisionMaker: _isDecisionMaker, ...rest } = VALID_LEAD;
     const r = leadSchema.safeParse(rest);
     if (r.success) {
       expect(r.data.isDecisionMaker).toBe(true);

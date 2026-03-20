@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface SatelliteRoofProps {
   zipCode: string;
@@ -28,6 +28,13 @@ export default function SatelliteRoof({ zipCode, panels = 20, systemKw, onRoofDa
   const [loading, setLoading] = useState(false);
   const [overlayVisible, setOverlayVisible] = useState(true);
 
+  const notifyRoof = useCallback(
+    (d: RoofData) => {
+      onRoofData?.(d);
+    },
+    [onRoofData]
+  );
+
   useEffect(() => {
     if (!zipCode || zipCode.length !== 5) return;
     setLoading(true);
@@ -37,12 +44,12 @@ export default function SatelliteRoof({ zipCode, panels = 20, systemKw, onRoofDa
       .then((d) => {
         if (d.success) {
           setData(d);
-          onRoofData?.(d);
+          notifyRoof(d);
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [zipCode, panels]);
+  }, [zipCode, panels, notifyRoof]);
 
   const hasGoogleKey = data?.satellite?.imageUrl;
 
@@ -146,7 +153,6 @@ export default function SatelliteRoof({ zipCode, panels = 20, systemKw, onRoofDa
 // ─── Illustrated Roof (when no Google Maps API key) ───────────────────────────
 function IllustratedRoof({ panels, systemKw, zipCode }: { panels: number; systemKw?: number; zipCode: string }) {
   const cols = Math.min(Math.ceil(Math.sqrt(panels * 1.5)), 7);
-  const rows = Math.ceil(panels / cols);
 
   return (
     <div style={{ position: "relative", width: "100%", paddingBottom: "62.5%", overflow: "hidden" }}>

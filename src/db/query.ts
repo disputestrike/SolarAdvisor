@@ -1,4 +1,3 @@
-import { db } from "./index";
 import mysql from "mysql2/promise";
 
 // Re-export a raw query helper that returns properly typed rows
@@ -15,8 +14,6 @@ export async function queryRows<T extends RowRecord = RowRecord>(
   sql: string,
   params: (string | number | boolean | null)[] = []
 ): Promise<T[]> {
-  const pool = (db as unknown as { session: { client: mysql.Pool } }).session?.client;
-  // fallback: get the underlying pool from drizzle
   const connection = await getConnection();
   const [rows] = await connection.execute(sql, params);
   connection.release();

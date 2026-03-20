@@ -5,14 +5,14 @@ import { leadActivity } from "@/db/schema";
 import { leadUpdateSchema } from "@/lib/validation";
 import { getAdminFromCookie } from "@/lib/auth";
 
-async function requireAdmin(req: NextRequest) {
+async function requireAdmin() {
   const admin = await getAdminFromCookie();
   if (!admin) return { admin: null, error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   return { admin, error: null };
 }
 
 export async function GET(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req);
+  const { error } = await requireAdmin();
   if (error) return error;
 
   const params = req.nextUrl.searchParams;
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req);
+  const { admin, error } = await requireAdmin();
   if (error) return error;
 
   const body = await req.json();

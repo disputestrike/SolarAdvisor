@@ -110,13 +110,13 @@ describe("scoreLead()", () => {
   });
 
   test("score 45–74 = medium tier", () => {
-    const r = scoreLead({
+    const hotEdge = scoreLead({
       isHomeowner: true,
       monthlyBill: 150,     // +20
       roofSlope: "steep",   // +12
       isDecisionMaker: true,// +15
     });
-    // 30 + 20 + 12 + 15 = 77 → hot actually, adjust
+    expect(hotEdge.tier).toBe("hot"); // 30 + 20 + 12 + 15 = 77
     const r2 = scoreLead({
       isHomeowner: true,
       monthlyBill: 100,     // +12

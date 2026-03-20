@@ -215,7 +215,7 @@ export default function HomePage() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 24 }}>
-            {PROCESS_STEPS.map((step, i) => (
+            {PROCESS_STEPS.map((step) => (
               <div key={step.num} style={{
                 background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,215,0,0.15)",
                 borderRadius: 20, padding: "28px 24px",

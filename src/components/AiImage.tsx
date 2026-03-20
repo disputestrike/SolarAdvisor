@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface AiImageProps {
   type: string;
@@ -54,15 +54,29 @@ export default function AiImage({
 }: AiImageProps) {
   const [src, setSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+
+  const fetchImage = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/images?type=${type}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && data.image) {
+        setSrc(data.image);
+      }
+    } catch {
+      /* fallback UI when !src */
+    } finally {
+      setLoading(false);
+    }
+  }, [type]);
 
   useEffect(() => {
     if (!priority) {
-      // Lazy load — only fetch when component mounts
       const observer = new IntersectionObserver(
         (entries) => {
           if (entries[0].isIntersecting) {
-            fetchImage();
+            void fetchImage();
             observer.disconnect();
           }
         },
@@ -71,28 +85,9 @@ export default function AiImage({
       const el = document.getElementById(`ai-img-${type}`);
       if (el) observer.observe(el);
       return () => observer.disconnect();
-    } else {
-      fetchImage();
     }
-  }, [type, priority]);
-
-  async function fetchImage() {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/images?type=${type}`);
-      if (!res.ok) { setFailed(true); return; }
-      const data = await res.json();
-      if (data.success && data.image) {
-        setSrc(data.image);
-      } else {
-        setFailed(true);
-      }
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }
+    void fetchImage();
+  }, [type, priority, fetchImage]);
 
   const fallback = FALLBACK_SCENES[type] || FALLBACK_SCENES.hero_home_panels;
 

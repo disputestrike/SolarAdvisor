@@ -138,7 +138,7 @@ export interface SolarEstimate {
 
 export function estimateSolar(
   monthlyBill: number,
-  state: string = "TX",
+  _state: string = "TX",
   avgSunHours: number = 5.0,
   avgKwhCost: number = 0.13
 ): SolarEstimate {

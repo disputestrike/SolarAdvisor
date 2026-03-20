@@ -462,19 +462,19 @@ function StepEstimate({ data, estimate, update, onNext, onBack }: { data: FormDa
           Choose Your Option
         </div>
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-          {["lease", "loan", "cash"].map(tab => (
+          {FINANCING_OPTIONS.filter((o) => o.value === "lease" || o.value === "loan" || o.value === "cash").map((opt) => (
             <button
-              key={tab}
-              onClick={() => { setActiveTab(tab); update("preferredFinancing", tab); }}
+              key={opt.value}
+              onClick={() => { setActiveTab(opt.value); update("preferredFinancing", opt.value); }}
               style={{
                 flex: 1, padding: "10px 6px", borderRadius: 12, fontWeight: 700, fontSize: "0.8rem",
-                border: activeTab === tab ? "2px solid var(--sun-core)" : "2px solid var(--border)",
-                background: activeTab === tab ? "linear-gradient(135deg, var(--sun-core), var(--sun-glow))" : "var(--white)",
-                color: activeTab === tab ? "white" : "var(--text-secondary)",
+                border: activeTab === opt.value ? "2px solid var(--sun-core)" : "2px solid var(--border)",
+                background: activeTab === opt.value ? "linear-gradient(135deg, var(--sun-core), var(--sun-glow))" : "var(--white)",
+                color: activeTab === opt.value ? "white" : "var(--text-secondary)",
                 cursor: "pointer", transition: "all 0.2s ease", textTransform: "capitalize",
               }}
             >
-              {tab === "lease" ? "$0-Down" : tab === "loan" ? "Loan" : "Cash"}
+              {opt.value === "lease" ? "$0-Down" : opt.value === "loan" ? "Loan" : "Cash"}
             </button>
           ))}
         </div>

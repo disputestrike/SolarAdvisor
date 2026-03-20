@@ -10,7 +10,6 @@ import { NextRequest } from "next/server";
 const mockQ = jest.fn();
 const mockQ1 = jest.fn();
 const mockQExec = jest.fn();
-const mockDbInsert = jest.fn().mockReturnValue({ values: jest.fn().mockResolvedValue(undefined) });
 
 jest.mock("@/db", () => ({
   db: { insert: () => ({ values: jest.fn().mockResolvedValue(undefined) }) },

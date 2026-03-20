@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, q, q1, qExec } from "@/db";
+import { db, q1, qExec } from "@/db";
 import { leadActivity, dripMessages } from "@/db/schema";
 import { leadSchema } from "@/lib/validation";
 import { scoreLead, estimateSolar } from "@/lib/scoring";

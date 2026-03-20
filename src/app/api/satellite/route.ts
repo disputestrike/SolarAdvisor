@@ -59,7 +59,7 @@ function getSatelliteImageUrl(lat: number, lng: number, zoom = 20): string {
 // ─── SVG solar panel overlay generator ───────────────────────────────────────
 function generatePanelOverlaySVG(
   panelCount: number,
-  roofAreaM2: number
+  _roofAreaM2: number
 ): string {
   // Estimate roof footprint in SVG coordinates (640x480 image, ~20m wide at zoom=20)
   const cols = Math.min(Math.ceil(Math.sqrt(panelCount * 1.6)), 8);
