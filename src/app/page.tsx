@@ -1,4 +1,9 @@
 import Link from "next/link";
+import dynamic from "next/dynamic";
+
+const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
+const AiImage = dynamic(() => import("@/components/AiImage"), { ssr: false });
+const SatelliteRoofDemo = dynamic(() => import("@/components/SatelliteRoofDemo"), { ssr: false });
 
 const TESTIMONIALS = [
   { name: "Marcus T.", location: "Phoenix, AZ", savings: "$187/mo", quote: "My bill dropped from $340 to $153. SolarAdvisor made the whole process painless.", stars: 5 },
@@ -137,78 +142,63 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Right: Visual card */}
-        <div style={{ animation: "sunRise 0.8s 0.1s cubic-bezier(0.34,1.56,0.64,1) both" }}>
+        {/* Right: AI Photo-Realistic Image */}
+        <div style={{ animation: "sunRise 0.8s 0.1s cubic-bezier(0.34,1.56,0.64,1) both", position: "relative" }}>
+          {/* Main hero image */}
           <div style={{
-            background: "var(--white)", borderRadius: 28,
-            border: "1px solid var(--border)", padding: "32px",
-            boxShadow: "0 24px 80px rgba(255,140,0,0.15), 0 4px 24px rgba(0,0,0,0.06)",
+            borderRadius: 24, overflow: "hidden",
+            boxShadow: "0 24px 80px rgba(255,140,0,0.2), 0 4px 24px rgba(0,0,0,0.1)",
+            border: "1px solid var(--border)",
+            aspectRatio: "4/3",
             position: "relative",
           }}>
-            {/* Glow accent */}
+            <AiImage
+              type="hero_home_panels"
+              alt="Beautiful home with solar panels installed"
+              priority
+              style={{ borderRadius: 24 }}
+            />
+            {/* Overlay stats badge */}
             <div style={{
-              position: "absolute", top: -2, left: "20%", right: "20%", height: 4,
-              background: "linear-gradient(90deg, var(--sun-core), var(--sun-glow))",
-              borderRadius: "0 0 4px 4px",
-            }} />
-
-            <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <div style={{ fontSize: 48, marginBottom: 8 }}>🏠☀️</div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: "1.5rem", fontWeight: 700, color: "var(--earth-dark)" }}>
-                Your Home, Powered by Sun
-              </div>
-            </div>
-
-            {/* Sample estimate */}
-            <div style={{ background: "var(--sun-pale)", borderRadius: 16, padding: 20, marginBottom: 20 }}>
-              <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
-                Sample Estimate · $250/mo Bill
-              </div>
-              {[
-                { label: "Monthly Savings", val: "$187/mo", color: "var(--leaf-green)" },
-                { label: "System Size", val: "8.4 kW", color: "var(--sun-core)" },
-                { label: "Panels Needed", val: "21 panels", color: "var(--sky-blue)" },
-                { label: "Payback Period", val: "7.2 years", color: "var(--earth-warm)" },
-              ].map(row => (
-                <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid rgba(255,215,0,0.3)" }}>
-                  <span style={{ fontSize: "0.875rem", color: "var(--text-secondary)" }}>{row.label}</span>
-                  <span style={{ fontWeight: 700, color: row.color }}>{row.val}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Financing tabs */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 20 }}>
-              {[
-                { label: "$0-Down Lease", sublabel: "$89/mo", active: true },
-                { label: "Solar Loan", sublabel: "$112/mo" },
-                { label: "Cash Purchase", sublabel: "Best ROI" },
-              ].map(f => (
-                <div key={f.label} style={{
-                  background: f.active ? "linear-gradient(135deg, var(--sun-core), var(--sun-glow))" : "var(--surface)",
-                  color: f.active ? "white" : "var(--text-secondary)",
-                  borderRadius: 10, padding: "10px 8px", textAlign: "center",
-                  border: f.active ? "none" : "1px solid var(--border)",
-                  cursor: "pointer",
-                }}>
-                  <div style={{ fontSize: "0.7rem", fontWeight: 600 }}>{f.label}</div>
-                  <div style={{ fontSize: "1rem", fontWeight: 800, marginTop: 2 }}>{f.sublabel}</div>
-                </div>
-              ))}
-            </div>
-
-            <Link href="/funnel" style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              background: "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
-              color: "white", fontWeight: 700, fontSize: "1rem",
-              padding: "15px", borderRadius: "999px", textDecoration: "none",
-              boxShadow: "0 4px 20px rgba(255,140,0,0.4)",
+              position: "absolute", bottom: 16, left: 16,
+              background: "rgba(255,251,242,0.95)", backdropFilter: "blur(8px)",
+              borderRadius: 14, padding: "12px 18px",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.12)",
+              border: "1px solid var(--border)",
             }}>
-              See My Real Estimate →
-            </Link>
+              <div style={{ display: "flex", gap: 20 }}>
+                {[
+                  { val: "~$187", label: "Monthly savings", color: "var(--leaf-green)" },
+                  { val: "30%", label: "Federal credit", color: "var(--sun-core)" },
+                  { val: "$0", label: "Down options", color: "var(--sky-blue)" },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: "center" }}>
+                    <div style={{ fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "1.3rem", color: s.color }}>{s.val}</div>
+                    <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary image — happy homeowners */}
+          <div style={{
+            position: "absolute", bottom: -20, right: -20,
+            width: "45%", aspectRatio: "1/1",
+            borderRadius: 16, overflow: "hidden",
+            border: "3px solid var(--white)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+          }}>
+            <AiImage
+              type="savings_couple"
+              alt="Happy homeowners reviewing solar savings"
+            />
           </div>
         </div>
       </section>
+
+      {/* Live Chat Widget — rendered on all pages */}
+      <LiveChat />
 
       {/* ─── HOW IT WORKS ─── */}
       <section id="how-it-works" style={{
@@ -250,7 +240,39 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ─── SAVINGS CTA BAND ─── */}
+      {/* ─── SATELLITE ROOF SHOWCASE ─── */}
+      <section style={{ padding: "clamp(60px,8vw,100px) clamp(20px,5vw,80px)", background: "var(--white)" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 48, alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--sun-core)", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 12 }}>
+                SATELLITE ROOF ANALYSIS
+              </div>
+              <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.8rem,4vw,2.8rem)", fontWeight: 900, color: "var(--earth-dark)", letterSpacing: "-0.02em", marginBottom: 16 }}>
+                We Visualize Solar on Your Actual Roof
+              </h2>
+              <p style={{ color: "var(--text-secondary)", fontSize: "1rem", lineHeight: 1.7, marginBottom: 24 }}>
+                Using satellite imagery and Google&apos;s Solar API, we map your exact roof dimensions, calculate sun exposure, and overlay a custom panel layout — before you ever talk to anyone.
+              </p>
+              {[
+                { icon: "🛰️", text: "Satellite roof measurement — exact square footage" },
+                { icon: "☀️", text: "Annual sunshine hours calculated for your coordinates" },
+                { icon: "🔲", text: "Panel layout optimized for your roof pitch and shading" },
+                { icon: "💰", text: "Savings estimate based on your real local utility rates" },
+              ].map(item => (
+                <div key={item.text} style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
+                  <span style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
+                  <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem", lineHeight: 1.5 }}>{item.text}</span>
+                </div>
+              ))}
+            </div>
+            {/* Live satellite demo */}
+            <div>
+              <SatelliteRoofDemo />
+            </div>
+          </div>
+        </div>
+      </section>
       <section style={{
         background: "linear-gradient(135deg, var(--sun-core) 0%, var(--sun-glow) 100%)",
         padding: "clamp(40px,6vw,70px) clamp(20px,5vw,80px)",

@@ -126,3 +126,42 @@ Webhook payload is HMAC-SHA256 signed. Set `PARTNER_WEBHOOK_URL` + `PARTNER_WEBH
 ---
 
 © DisputeStrike / SunWave Gov LLC — Proprietary
+
+---
+
+## New Features (v1.1)
+
+### AI Photo-Realistic Images
+Powered by **Google Vertex AI Imagen** (primary) with **Hugging Face SDXL** fallback. Generates photo-realistic images of homes with solar panels, happy homeowners, and aerial views — all specific to the solar context.
+
+- Route: `GET /api/images?type=hero_home_panels`
+- Types: `hero_family`, `hero_home_panels`, `roof_overlay`, `savings_couple`, `installer_working`, `neighborhood_solar`, `testimonial_home`
+- Falls back to high-quality CSS/SVG scenes when API keys not configured
+
+**Setup:**
+```
+GOOGLE_CLOUD_PROJECT_ID=your-project
+GOOGLE_CLOUD_ACCESS_TOKEN=ya29.xxx   # gcloud auth print-access-token
+# OR
+HUGGING_FACE_TOKEN=hf_xxx            # free at huggingface.co
+```
+
+### Satellite Roof Overlay
+Uses **Google Maps Static API** + **Google Solar API** to fetch real satellite imagery of any US address and overlay an animated solar panel layout.
+
+- Route: `GET /api/satellite?zip=78701&panels=20`
+- Returns: satellite image URL, roof area (m²), annual sunshine hours, panel layout SVG
+- Falls back to illustrated aerial view when no Google key configured
+- Interactive demo on homepage — any ZIP, adjustable panel count
+
+**Setup:** Add `NEXT_PUBLIC_GOOGLE_MAPS_KEY` (enable Maps Static API + Solar API in Google Cloud Console)
+
+### Live Chat + Instant Quote Widget
+Floating chat widget on all pages. Powered by **Claude Haiku** for streaming AI responses. Falls back to a rule-based instant quote engine (no API key required).
+
+- Route: `POST /api/chat` (streaming)
+- Calculates instant savings quotes from just a monthly bill number
+- Quick-question chips, streaming responses, unread badge, proactive bubble after 8s
+- Full conversation history context
+
+**Setup:** Add `ANTHROPIC_API_KEY` for AI responses, or works immediately with built-in rule engine.

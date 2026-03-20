@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+
+const SatelliteRoof = dynamic(() => import("@/components/SatelliteRoof"), { ssr: false });
+const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 interface FormData {
@@ -425,6 +429,18 @@ function StepEstimate({ data, estimate, update, onNext, onBack }: { data: FormDa
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* ── Satellite roof overlay ── */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <span>🛰️</span> Your Roof · {data.zipCode}
+        </div>
+        <SatelliteRoof
+          zipCode={data.zipCode}
+          panels={estimate.panels}
+          systemKw={estimate.systemKw}
+        />
       </div>
 
       {/* Federal credit callout */}
@@ -879,6 +895,9 @@ export default function FunnelPage() {
           ))}
         </div>
       </div>
+
+      {/* Live chat — available throughout funnel */}
+      <LiveChat />
     </div>
   );
 }
