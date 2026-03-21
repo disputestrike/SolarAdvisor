@@ -42,10 +42,13 @@ Open http://localhost:3000
 
 1. New Project → Add MySQL plugin
 2. New Service → Deploy from GitHub → `disputestrike/SolarAdvisor`
-3. Set all env vars from `.env.example` in Railway dashboard
-4. Run migration: paste `migrate.sql` into Railway MySQL console
+3. Set all env vars from `.env.example` in Railway dashboard (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite)
+4. **Database migrations (MySQL)**  
+   - **Brand-new database:** run `migrate.sql` once (full schema).  
+   - **Existing database** that was created before address/utility fields: run **`migrate_lead_address_utility.sql`** once so `leads` has `street_address`, `formatted_address`, `latitude`, `longitude`, `place_id`, `utility_provider`, `building_type`, `stories`. Without this, `POST /api/leads` can return 500 (“Unknown column”).  
+   Paste the file contents into Railway → MySQL → **Query** (or use `mysql` CLI with `DATABASE_URL` / connection vars).
 5. Seed admin: `node scripts/seed-admin.mjs admin@yourdomain.com "Password123!"`
-6. Railway auto-deploys on push to `main`
+6. Railway auto-deploys on push to `main` (no separate “push to Railway” step if GitHub integration is connected)
 
 ---
 
