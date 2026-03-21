@@ -4,16 +4,20 @@
  * Railway/Docker set HOSTNAME to the container hostname (e.g. ffc3bd32d8b0),
  * so the server does not listen on 0.0.0.0 and platform healthchecks fail.
  * Force IPv4 all-interfaces bind before starting the standalone server.
+ *
+ * MySQL migrate.sql must NOT block the first HTTP bind — Railway healthchecks
+ * start immediately; blocking on ETIMEDOUT keeps the port closed until timeouts finish.
  */
 const path = require("path");
-const { spawn, spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 
 const root = path.resolve(__dirname, "..");
 const server = path.join(root, ".next", "standalone", "server.js");
 
 process.env.HOSTNAME = "0.0.0.0";
+process.env.HOST = "0.0.0.0";
 
-function runMigrateIfConfigured() {
+function runMigrateInBackground() {
   if (process.env.SKIP_DB_MIGRATE === "1" || process.env.SKIP_DB_MIGRATE === "true") {
     console.log("[start] SKIP_DB_MIGRATE set — skipping migrate.sql");
     return;
@@ -31,36 +35,37 @@ function runMigrateIfConfigured() {
     return;
   }
   const script = path.join(root, "scripts", "apply-migrate.mjs");
-  console.log("[start] Running migrate.sql …");
-  const r = spawnSync(process.execPath, [script], {
+  console.log("[start] Scheduling migrate.sql in background (does not block /api/health) …");
+  const m = spawn(process.execPath, [script], {
     cwd: root,
     env: {
       ...process.env,
-      // Shorter retries + connect timeout inside apply-migrate.mjs — don’t block deploy for minutes
       STARTUP_MIGRATE: "1",
     },
     stdio: "inherit",
   });
-  if (r.status !== 0) {
-    console.error(
-      "[start] migrate.sql did not complete (DB unreachable or wrong credentials). Starting the app anyway so healthchecks pass."
-    );
-    console.error(
-      "[start] Fix: link MySQL to this service on Railway, use the private DATABASE_URL, or run migrate from Railway shell. Optional: SKIP_DB_MIGRATE=1. Strict fail: MIGRATE_EXIT_ON_FAIL=1"
-    );
-    if (process.env.MIGRATE_EXIT_ON_FAIL === "1" || process.env.MIGRATE_EXIT_ON_FAIL === "true") {
-      process.exit(r.status ?? 1);
+  m.on("exit", (code) => {
+    if (code !== 0) {
+      console.error(
+        "[start] migrate.sql exited with code %s — tables may be missing. Fix DB networking or run SQL manually.",
+        code
+      );
+    } else {
+      console.log("[start] migrate.sql finished successfully.");
     }
-  }
+  });
 }
-
-runMigrateIfConfigured();
 
 const child = spawn(process.execPath, [server], {
   cwd: root,
   env: process.env,
   stdio: "inherit",
 });
+
+// Let Next bind to PORT before any DB work competes for the event loop / network stack.
+setTimeout(() => {
+  runMigrateInBackground();
+}, 1500);
 
 child.on("exit", (code, signal) => {
   if (signal) process.kill(process.pid, signal);
