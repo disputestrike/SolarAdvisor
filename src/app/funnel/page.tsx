@@ -514,7 +514,7 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
           <button type="button" onClick={() => { update("isHomeowner", true); setError(""); }} style={btn(data.isHomeowner === true)}>
             Yes
           </button>
-          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(data.isHomeowner === false)}>
+          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(false)}>
             No
           </button>
         </div>
