@@ -8,8 +8,8 @@ export interface ResolvedPlace {
   city: string;
   state: string;
   zipCode: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   placeId: string;
 }
 

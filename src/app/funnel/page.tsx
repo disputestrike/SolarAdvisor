@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import BrandLogo from "@/components/BrandLogo";
 import PlacesAddressField, { type ResolvedPlace } from "@/components/PlacesAddressField";
+import ManualAddressFields, { buildManualResolved } from "@/components/ManualAddressFields";
 
 const SatelliteRoof = dynamic(() => import("@/components/SatelliteRoof"), { ssr: false });
 const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
@@ -179,6 +180,7 @@ function StepAddressEnergy({
 }) {
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
   const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
+  const [manualMode, setManualMode] = useState(!mapsKey);
   const [zipInfo, setZipInfo] = useState<ZipInfo | null>(null);
   const [loadingZip, setLoadingZip] = useState(false);
   const [error, setError] = useState("");
@@ -216,9 +218,24 @@ function StepAddressEnergy({
     [update, lookupZip]
   );
 
+  useEffect(() => {
+    if (!manualMode) return;
+    const m = buildManualResolved({
+      streetAddress: data.streetAddress,
+      city: data.city,
+      state: data.state,
+      zipCode: data.zipCode,
+    });
+    applyResolved(m);
+  }, [manualMode, data.streetAddress, data.city, data.state, data.zipCode, applyResolved]);
+
   const handleNext = () => {
     if (!resolved) {
-      setError("Please select your full address from the dropdown list.");
+      setError(
+        manualMode
+          ? "Please complete street, city, state (2 letters), and a 5-digit ZIP."
+          : "Please select your full address from the dropdown list."
+      );
       return;
     }
     if (!data.utilityProvider.trim()) {
@@ -248,16 +265,70 @@ function StepAddressEnergy({
         Determine location &amp; usage
       </h2>
       <p style={{ color: "#64748b", fontSize: "0.92rem", marginBottom: 20, lineHeight: 1.55 }}>
-        We use your street address to center satellite imagery on your roof. Choose a suggestion from the list — same as professional solar audit tools.
+        {manualMode
+          ? mapsKey
+            ? "Enter your full address below, or switch back to Google address search if you prefer."
+            : "We use your street address for your estimate and to center satellite imagery when coordinates are available. Enter street, city, state, and ZIP below."
+          : "We use your street address to center satellite imagery on your roof. Choose a suggestion from the list — same as professional solar audit tools."}
       </p>
 
-      <PlacesAddressField
-        apiKey={mapsKey}
-        value={data.addressInput}
-        onChangeText={(v) => update("addressInput", v)}
-        onResolved={applyResolved}
-        error={error && !resolved ? error : undefined}
-      />
+      {mapsKey && (
+        <div style={{ marginBottom: 14 }}>
+          <button
+            type="button"
+            onClick={() => {
+              setError("");
+              if (manualMode) {
+                setManualMode(false);
+                applyResolved(null);
+              } else {
+                setManualMode(true);
+                applyResolved(null);
+                update("addressInput", "");
+              }
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              fontSize: "0.88rem",
+              fontWeight: 600,
+              color: "#2563eb",
+              textDecoration: "underline",
+              fontFamily: "var(--font-brand)",
+            }}
+          >
+            {manualMode ? "Use Google address search instead" : "Enter address manually (no dropdown)"}
+          </button>
+        </div>
+      )}
+
+      {manualMode ? (
+        <ManualAddressFields
+          variant={mapsKey ? "manual_choice" : "no_maps_key"}
+          streetAddress={data.streetAddress}
+          city={data.city}
+          state={data.state}
+          zipCode={data.zipCode}
+          update={(k, v) => {
+            setError("");
+            update(k, v);
+          }}
+        />
+      ) : (
+        <PlacesAddressField
+          apiKey={mapsKey}
+          value={data.addressInput}
+          onChangeText={(v) => update("addressInput", v)}
+          onResolved={applyResolved}
+          error={error && !resolved ? error : undefined}
+        />
+      )}
+
+      {manualMode && error && !resolved && (
+        <p style={{ color: "#dc2626", fontSize: "0.82rem", marginTop: 8, marginBottom: 12 }}>{error}</p>
+      )}
 
       {loadingZip && <p style={{ fontSize: "0.8rem", color: "#64748b" }}>Loading regional incentives…</p>}
       {zipInfo?.city && (

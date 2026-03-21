@@ -12,6 +12,7 @@
     "test:watch": "jest --watch",
     "test:load": "node tests/load-chaos.mjs",
     "migrate": "node -e \"require(\"dotenv\").config({path:\".env.local\"}); const {execSync}=require(\"child_process\"); execSync(\"mysql -h $MYSQL_HOST -P ${MYSQL_PORT:-3306} -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < migrate.sql\", {stdio:\"inherit\"})\"",
+    "db:migrate": "node scripts/apply-migrate.mjs",
     "db:seed": "node scripts/seed-admin.mjs",
     "typecheck": "tsc --noEmit"
   },

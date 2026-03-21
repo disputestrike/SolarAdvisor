@@ -16,7 +16,8 @@ export const leadSchema = z.object({
 
   formattedAddress: z.string().min(8, "Choose your address from the list"),
   streetAddress: z.string().optional(),
-  placeId: z.string().min(10, "Choose your address from the list"),
+  /** Google Places id, or `manual_*` when entered without Google autocomplete */
+  placeId: z.string().min(1, "Address is required"),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
 
@@ -64,7 +65,31 @@ export const leadSchema = z.object({
   utmSource: z.string().optional(),
   utmMedium: z.string().optional(),
   utmCampaign: z.string().optional(),
-});
+})
+  .superRefine((data, ctx) => {
+    const manual = data.placeId.startsWith("manual_");
+    if (manual) {
+      if (!data.streetAddress?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Street address is required", path: ["streetAddress"] });
+      }
+      if (!data.city?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "City is required", path: ["city"] });
+      }
+      if (!data.state || !/^[A-Za-z]{2}$/.test(data.state)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a 2-letter state code", path: ["state"] });
+      }
+      if (!data.formattedAddress || data.formattedAddress.length < 8) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Full address is required", path: ["formattedAddress"] });
+      }
+    } else {
+      if (data.placeId.length < 10) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Choose your address from the list", path: ["placeId"] });
+      }
+      if (!data.formattedAddress || data.formattedAddress.length < 8) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Choose your address from the list", path: ["formattedAddress"] });
+      }
+    }
+  });
 
 export type LeadFormData = z.infer<typeof leadSchema>;
 

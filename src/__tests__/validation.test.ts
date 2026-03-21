@@ -33,6 +33,22 @@ describe("leadSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  test("accepts manual entry lead without Google place id (manual_* prefix)", () => {
+    const manual = {
+      ...VALID_LEAD,
+      placeId: "manual_abc123def456",
+      formattedAddress: "3945 Connecticut Ave NW, Washington, DC 20008",
+      streetAddress: "3945 Connecticut Ave NW, APT 110",
+      city: "Washington",
+      state: "DC",
+      zipCode: "20008",
+      latitude: undefined,
+      longitude: undefined,
+    };
+    const result = leadSchema.safeParse(manual);
+    expect(result.success).toBe(true);
+  });
+
   test("optional fields can be omitted", () => {
     const { roofSlope: _roofSlope, shadingLevel: _shadingLevel, roofType: _roofType, ...minimal } = VALID_LEAD as typeof VALID_LEAD & { roofType?: string };
     const result = leadSchema.safeParse(minimal);
