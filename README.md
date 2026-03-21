@@ -51,6 +51,9 @@ Open http://localhost:3000
 6. Seed admin: `node scripts/seed-admin.mjs admin@yourdomain.com "Password123!"`
 7. Railway auto-deploys on push to `main` (no separate “push to Railway” step if GitHub integration is connected)
 
+**Troubleshooting — `npm ci` / “Missing: sharp from lock file”:**  
+That error is from a **deploy that still had `sharp` in `package.json` without a matching `package-lock.json`**. Current `main` **does not** depend on `sharp` (see `images.unoptimized` in `next.config.js`). In Railway → **Deployments**, open the latest build and confirm the commit is **`b2d0c3e` or newer** (or **Redeploy** from the latest `main`). Old failed rows in the history will still show the old log.
+
 ---
 
 ## Funnel Flow
