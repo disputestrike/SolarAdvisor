@@ -21,25 +21,34 @@ interface PlacesAddressFieldProps {
   error?: string;
 }
 
+/** Script onload fires before `google.maps.places` is ready — poll until Places exists or timeout. */
 function loadMapsPlaces(apiKey: string): Promise<void> {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined") return reject();
     if (window.google?.maps?.places) return resolve();
     const id = "google-maps-places-js";
-    if (document.getElementById(id)) {
+    const waitForPlaces = () => {
+      let n = 0;
+      const max = 400;
       const t = window.setInterval(() => {
         if (window.google?.maps?.places) {
           window.clearInterval(t);
           resolve();
+        } else if (++n >= max) {
+          window.clearInterval(t);
+          reject(new Error("Google Maps Places API did not become ready in time"));
         }
       }, 50);
+    };
+    if (document.getElementById(id)) {
+      waitForPlaces();
       return;
     }
     const s = document.createElement("script");
     s.id = id;
     s.async = true;
     s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places`;
-    s.onload = () => resolve();
+    s.onload = () => waitForPlaces();
     s.onerror = () => reject();
     document.head.appendChild(s);
   });

@@ -48,9 +48,9 @@ Open http://localhost:3000
    - The app prefers **`MYSQL_URL`** over `DATABASE_URL`. Default MySQL DB name is often **`railway`** — either keep that in your URL or create database `solaradvisor` and point there.
 4. **Database migrations (MySQL)**  
    - On each deploy, **`migrate.sql` runs in the background** (after the HTTP server binds) so **Railway `/api/health` is not blocked** by slow or failing MySQL (**`ETIMEDOUT`**). Uses `CREATE TABLE IF NOT EXISTS`, so it is safe to repeat. If MySQL is unreachable, the app still serves traffic — fix networking (link MySQL, use private `DATABASE_URL`), then redeploy or run SQL manually. Set **`SKIP_DB_MIGRATE=1`** to skip automatic migrate entirely.  
-   - **Manual / troubleshooting:** `npm run db:migrate` or paste `migrate.sql` into Railway → MySQL → **Query**.  
+   - **Manual / troubleshooting:** `npm run db:migrate` (schema) or **`npm run db:setup`** = full `migrate.sql` + `migrate_seed_state_incentives.sql` in one shot. Or paste into Railway → MySQL → **Query**.  
    - **Existing database** missing address columns: run **`migrate_lead_address_utility.sql`** once so `POST /api/leads` does not 500 (“Unknown column”).
-   - If **`state_incentives`** exists but is **empty** (no rows), ZIP/region hints stay blank: run **`migrate_seed_state_incentives.sql`** in MySQL Query (or paste from that file). It is idempotent (`INSERT IGNORE`).
+   - If **`state_incentives`** is empty, ZIP/region hints stay blank: **`npm run db:setup`** or paste **`migrate_seed_state_incentives.sql`** (idempotent `INSERT IGNORE`).
 5. Set remaining env vars from `.env.example` (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite). **`npm run start`** uses `scripts/start-standalone.cjs`, which forces **`HOSTNAME=0.0.0.0`** because Railway sets `HOSTNAME` to the container ID and Next would otherwise bind only there (healthchecks then fail). **`next.config.js`** sets **`images.unoptimized: true`** so standalone builds do not require the native **`sharp`** binary (keeps `npm ci` + Railway Nixpacks reliable).
 6. Seed admin: `node scripts/seed-admin.mjs admin@yourdomain.com "Password123!"`
 7. Railway auto-deploys on push to `main` (no separate “push to Railway” step if GitHub integration is connected)

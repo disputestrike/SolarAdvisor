@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, Suspense, type CSSProperties } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import BrandLogo from "@/components/BrandLogo";
 import PlacesAddressField, { type ResolvedPlace } from "@/components/PlacesAddressField";
@@ -169,7 +169,7 @@ function quickEstimate(bill: number): Estimate {
 }
 
 /* ─── Step Components ───────────────────────────────────────────────── */
-function StepAddressEnergy({
+function StepAddressEnergyInner({
   data,
   update,
   onNext,
@@ -178,9 +178,11 @@ function StepAddressEnergy({
   update: (k: keyof FormData, v: string | boolean | number | null) => void;
   onNext: () => void;
 }) {
+  const searchParams = useSearchParams();
+  const zipFromUrl = searchParams.get("zip")?.replace(/\D/g, "").slice(0, 5) ?? "";
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const [manualMode, setManualMode] = useState(() => !mapsKey || zipFromUrl.length === 5);
   const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
-  const [manualMode, setManualMode] = useState(!mapsKey);
   const [zipInfo, setZipInfo] = useState<ZipInfo | null>(null);
   const [loadingZip, setLoadingZip] = useState(false);
   const [error, setError] = useState("");
@@ -232,14 +234,10 @@ function StepAddressEnergy({
     applyResolved(m);
   }, [manualMode, data.streetAddress, data.city, data.state, data.zipCode, applyResolved]);
 
-  /** Landing with ?zip= from home CTA: show manual address + ZIP (Places-only mode hid the prefilled ZIP). */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const z = new URLSearchParams(window.location.search).get("zip");
-    if (z && /^\d{5}$/.test(z)) {
-      setManualMode(true);
-    }
-  }, []);
+    const z = searchParams.get("zip")?.replace(/\D/g, "").slice(0, 5) ?? "";
+    if (z.length === 5 && mapsKey) setManualMode(true);
+  }, [searchParams, mapsKey]);
 
   /** Prefill ZIP from URL → load region line (state-only if no city in DB). */
   useEffect(() => {
@@ -435,6 +433,24 @@ function StepAddressEnergy({
         Next →
       </button>
     </div>
+  );
+}
+
+function StepAddressEnergy(props: {
+  data: FormData;
+  update: (k: keyof FormData, v: string | boolean | number | null) => void;
+  onNext: () => void;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ padding: 32, textAlign: "center", color: "#64748b", fontFamily: "var(--font-brand)" }}>
+          Loading…
+        </div>
+      }
+    >
+      <StepAddressEnergyInner {...props} />
+    </Suspense>
   );
 }
 
