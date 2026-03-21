@@ -66,6 +66,14 @@ Open http://localhost:3000
 7. Seed admin: `node scripts/seed-admin.mjs admin@yourdomain.com "Password123!"`
 8. Railway auto-deploys on push to `main` (no separate “push to Railway” step if GitHub integration is connected)
 
+### “Claim My Estimate” → `connect ETIMEDOUT` (or Internal server error)
+
+That error is almost always **MySQL**, not email. **`POST /api/leads`** must **insert the row in the database** before the response returns. **SMTP / SendGrid / “send API key”** is only used **after** a successful save (welcome email in `src/lib/notifications.ts`) and does **not** block the button.
+
+**Fix:** Same as [Still no tables?](#still-no-tables-railway-or-local) — web service needs a working **`MYSQL_URL`** (private Railway reference) to the MySQL plugin. Until the DB accepts connections, submits will keep timing out.
+
+**What the lead email contains** (subject: *“Your SolarAdvisor Estimate is Ready 🌞”*): personalized greeting, address, estimated monthly/yearly savings, system kW / panels / payback, optional satellite image (needs `NEXT_PUBLIC_GOOGLE_MAPS_KEY`), 30% tax credit callout, lease/loan/cash comparison, “Book consultation” link (`GCAL_BOOKING_URL` or `/contact`), and a short “what happens next” timeline. Code: `getLeadWelcomeEmail()` in `src/lib/notifications.ts`.
+
 **Troubleshooting — `npm ci` / “Missing: sharp from lock file”:**  
 That error is from a **deploy that still had `sharp` in `package.json` without a matching `package-lock.json`**. Current `main` **does not** depend on `sharp` (see `images.unoptimized` in `next.config.js`). In Railway → **Deployments**, open the latest build and confirm the commit is **`b2d0c3e` or newer** (or **Redeploy** from the latest `main`). Old failed rows in the history will still show the old log.
 

@@ -182,9 +182,22 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     console.error("[Lead API]", err);
-    const detail = err instanceof Error ? err.message : String(err);
-    // Always return the real error message so we can debug from the UI
-    return NextResponse.json({ error: "Internal server error", detail }, { status: 500 });
+    const raw = err instanceof Error ? err.message : String(err);
+    /** Saving the lead hits MySQL first. Email/SMS run after success and do not cause this error. */
+    const dbUnreachable =
+      /ETIMEDOUT|ECONNREFUSED|ENOTFOUND|getaddrinfo|ER_ACCESS_DENIED_ERROR/i.test(raw);
+    if (dbUnreachable) {
+      return NextResponse.json(
+        {
+          error: "Database connection failed",
+          detail:
+            "The app could not reach MySQL in time (this is not an email/SMTP issue). On Railway: open your **web** service → Variables → add **MYSQL_URL** via Reference to the MySQL plugin (private URL). Remove placeholder DATABASE_URL. Then redeploy or run `npm run migrate:now` against the same database.",
+          technical: raw,
+        },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ error: "Internal server error", detail: raw }, { status: 500 });
   }
 }
 
