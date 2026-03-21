@@ -34,14 +34,23 @@ function runMigrateIfConfigured() {
   console.log("[start] Running migrate.sql …");
   const r = spawnSync(process.execPath, [script], {
     cwd: root,
-    env: process.env,
+    env: {
+      ...process.env,
+      // Shorter retries + connect timeout inside apply-migrate.mjs — don’t block deploy for minutes
+      STARTUP_MIGRATE: "1",
+    },
     stdio: "inherit",
   });
   if (r.status !== 0) {
     console.error(
-      "[start] migrate.sql failed. Fix DB credentials / networking, or set SKIP_DB_MIGRATE=1 to start without tables."
+      "[start] migrate.sql did not complete (DB unreachable or wrong credentials). Starting the app anyway so healthchecks pass."
     );
-    process.exit(r.status ?? 1);
+    console.error(
+      "[start] Fix: link MySQL to this service on Railway, use the private DATABASE_URL, or run migrate from Railway shell. Optional: SKIP_DB_MIGRATE=1. Strict fail: MIGRATE_EXIT_ON_FAIL=1"
+    );
+    if (process.env.MIGRATE_EXIT_ON_FAIL === "1" || process.env.MIGRATE_EXIT_ON_FAIL === "true") {
+      process.exit(r.status ?? 1);
+    }
   }
 }
 

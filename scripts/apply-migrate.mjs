@@ -15,6 +15,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
 function getConnectionConfig() {
+  const connectTimeout = parseInt(
+    process.env.MYSQL_CONNECT_TIMEOUT_MS ||
+      (process.env.STARTUP_MIGRATE === "1" ? "5000" : "10000"),
+    10
+  );
   const uri =
     process.env.DATABASE_URL ||
     process.env.MYSQL_URL ||
@@ -23,6 +28,7 @@ function getConnectionConfig() {
     return {
       uri: uri.trim(),
       multipleStatements: true,
+      connectTimeout,
       ssl:
         process.env.NODE_ENV === "production"
           ? { rejectUnauthorized: false }
@@ -41,6 +47,7 @@ function getConnectionConfig() {
     password,
     database,
     multipleStatements: true,
+    connectTimeout,
     ssl:
       process.env.NODE_ENV === "production"
         ? { rejectUnauthorized: false }
@@ -72,7 +79,15 @@ async function main() {
   const sqlPath = path.join(root, "migrate.sql");
   const sql = fs.readFileSync(sqlPath, "utf8");
 
-  const maxAttempts = parseInt(process.env.MIGRATE_RETRIES || "8", 10);
+  const startup = process.env.STARTUP_MIGRATE === "1";
+  const maxAttempts = parseInt(
+    process.env.MIGRATE_RETRIES || (startup ? "3" : "8"),
+    10
+  );
+  const retryDelayMs = parseInt(
+    process.env.MIGRATE_RETRY_DELAY_MS || (startup ? "2000" : "3000"),
+    10
+  );
   let lastErr;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -98,7 +113,7 @@ async function main() {
       }
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`[migrate] attempt ${attempt} failed: ${msg}`);
-      if (attempt < maxAttempts) await sleep(3000);
+      if (attempt < maxAttempts) await sleep(retryDelayMs);
     }
   }
 
