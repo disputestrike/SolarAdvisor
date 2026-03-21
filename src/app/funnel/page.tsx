@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -179,8 +179,8 @@ function StepAddressEnergy({
   onNext: () => void;
 }) {
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-  /** Default manual when no Maps key; ?zip= switches to manual on client (do not use useSearchParams — Suspense stuck “Loading…” in prod). */
-  const [manualMode, setManualMode] = useState(!mapsKey);
+  /** Always start in manual entry — ZIP from home is a lead-in; Google Places is opt-in (avoids stuck “Loading address search…”). */
+  const [manualMode, setManualMode] = useState(true);
   const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
   const [zipInfo, setZipInfo] = useState<ZipInfo | null>(null);
   const [loadingZip, setLoadingZip] = useState(false);
@@ -233,12 +233,6 @@ function StepAddressEnergy({
     applyResolved(m);
   }, [manualMode, data.streetAddress, data.city, data.state, data.zipCode, applyResolved]);
 
-  useLayoutEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get("zip");
-    const z = raw?.replace(/\D/g, "").slice(0, 5) ?? "";
-    if (z.length === 5) setManualMode(true);
-  }, [mapsKey]);
-
   /** Prefill ZIP from URL → load region line (state-only if no city in DB). */
   useEffect(() => {
     const z = data.zipCode.replace(/\D/g, "").slice(0, 5);
@@ -283,9 +277,9 @@ function StepAddressEnergy({
       <p style={{ color: "#64748b", fontSize: "0.92rem", marginBottom: 20, lineHeight: 1.55 }}>
         {manualMode
           ? mapsKey
-            ? "Enter your full address below, or switch back to Google address search if you prefer."
+            ? "Your ZIP is pre-filled from the last step. Complete street, city, and state — or use Google address search below."
             : "We use your street address for your estimate and to center satellite imagery when coordinates are available. Enter street, city, state, and ZIP below."
-          : "We use your street address to center satellite imagery on your roof. Choose a suggestion from the list — same as professional solar audit tools."}
+          : "Pick your address from the Google suggestions list, or switch to manual entry."}
       </p>
 
       {mapsKey && (
