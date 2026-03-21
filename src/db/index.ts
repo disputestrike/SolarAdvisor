@@ -18,11 +18,24 @@ function toSqlParams(
 
 let _pool: mysql.Pool | null = null;
 
+/** Prefer Railway MYSQL_URL over a pasted DATABASE_URL from .env.example (wrong host/password). */
+function getMysqlUri(): string | undefined {
+  const ordered = [
+    process.env.MYSQL_URL,
+    process.env.MYSQLPRIVATE_URL,
+    process.env.DATABASE_URL,
+  ].filter(Boolean) as string[];
+  for (const raw of ordered) {
+    const u = raw.trim();
+    if (!/^mysql:\/\//i.test(u)) continue;
+    if (/your-password|your-railway-host/i.test(u)) continue;
+    return u;
+  }
+  return undefined;
+}
+
 function getPoolOptions(): mysql.PoolOptions {
-  const uri =
-    process.env.DATABASE_URL ||
-    process.env.MYSQL_URL ||
-    process.env.MYSQLPRIVATE_URL;
+  const uri = getMysqlUri();
   if (uri && /^mysql:\/\//i.test(uri.trim())) {
     return {
       uri: uri.trim(),

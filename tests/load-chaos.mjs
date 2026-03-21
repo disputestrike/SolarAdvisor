@@ -101,19 +101,17 @@ function makeValidLead(overrides = {}) {
 async function runHealthTests() {
   console.log(colors.bold("\n▶ Suite 1: Health Check"));
 
-  await test("GET /api/health returns 200", async () => {
+  await test("GET /api/health returns 200 (liveness, no DB)", async () => {
     const { res, data } = await get("/api/health");
-    assert(res.status === 200 || res.status === 503, `Unexpected status: ${res.status}`);
+    assert(res.status === 200, `Unexpected status: ${res.status}`);
     assert(data?.timestamp, "Missing timestamp");
     assert(data?.services, "Missing services");
   });
 
-  await test("Health response has database service status", async () => {
-    const { data } = await get("/api/health");
-    assert(
-      data?.services?.database === "ok" || data?.services?.database === "error",
-      `Unexpected db status: ${data?.services?.database}`
-    );
+  await test("GET /api/health/ready reports database status", async () => {
+    const { res, data } = await get("/api/health/ready");
+    assert(res.status === 200 || res.status === 503, `Unexpected status: ${res.status}`);
+    assert(data?.database === "ok" || data?.database === "error", "Missing database field");
   });
 }
 

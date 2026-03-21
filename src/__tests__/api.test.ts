@@ -232,38 +232,40 @@ describe("GET /api/leads (duplicate check)", () => {
   });
 });
 
-// ─── /api/health ──────────────────────────────────────────────────────────────
+// ─── /api/health (liveness — no DB) ───────────────────────────────────────────
 describe("GET /api/health", () => {
-  test("returns 200 when DB is healthy", async () => {
-    const { checkDbConnection } = await import("@/db");
-    (checkDbConnection as jest.Mock).mockResolvedValue(true);
+  test("returns 200 immediately without touching DB", async () => {
     const { GET } = await import("@/app/api/health/route");
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.status).toBe("ok");
-    expect(data.services.database).toBe("ok");
+    expect(data.timestamp).toBeDefined();
   });
+});
 
-  test("returns 200 degraded when DB is down (liveness for Railway)", async () => {
+// ─── /api/health/ready (readiness — DB ping) ───────────────────────────────────
+describe("GET /api/health/ready", () => {
+  test("returns 200 when DB is healthy", async () => {
     const { checkDbConnection } = await import("@/db");
-    (checkDbConnection as jest.Mock).mockResolvedValue(false);
-    const { GET } = await import("@/app/api/health/route");
+    (checkDbConnection as jest.Mock).mockResolvedValue(true);
+    const { GET } = await import("@/app/api/health/ready/route");
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.status).toBe("degraded");
-    expect(data.services.database).toBe("error");
+    expect(data.status).toBe("ready");
+    expect(data.database).toBe("ok");
   });
 
-  test("response includes timestamp", async () => {
+  test("returns 503 when DB is down", async () => {
     const { checkDbConnection } = await import("@/db");
-    (checkDbConnection as jest.Mock).mockResolvedValue(true);
-    const { GET } = await import("@/app/api/health/route");
+    (checkDbConnection as jest.Mock).mockResolvedValue(false);
+    const { GET } = await import("@/app/api/health/ready/route");
     const res = await GET();
+    expect(res.status).toBe(503);
     const data = await res.json();
-    expect(data.timestamp).toBeDefined();
-    expect(new Date(data.timestamp).getTime()).not.toBeNaN();
+    expect(data.status).toBe("not_ready");
+    expect(data.database).toBe("error");
   });
 });
 

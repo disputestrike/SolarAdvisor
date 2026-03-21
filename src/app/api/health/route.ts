@@ -1,31 +1,24 @@
 import { NextResponse } from "next/server";
-import { checkDbConnection } from "@/db";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Liveness probe — must return 2xx so PaaS healthchecks (e.g. Railway) pass even if
- * MySQL is still provisioning or optional. Use /api/health/ready for strict DB checks.
+ * Liveness — must respond fast. Do NOT touch MySQL here: a bad DATABASE_URL
+ * causes mysql2 to block until connectTimeout (~15s), and Railway healthchecks
+ * time out → "service unavailable" even when the app is up.
+ *
+ * Database status: GET /api/health/ready
  */
 export async function GET() {
-  let dbOk = false;
-  try {
-    dbOk = await checkDbConnection();
-  } catch {
-    dbOk = false;
-  }
-
-  const status = dbOk ? "ok" : "degraded";
-
   return NextResponse.json(
     {
-      status,
+      status: "ok",
       timestamp: new Date().toISOString(),
       services: {
-        database: dbOk ? "ok" : "error",
         smtp: process.env.SMTP_USER ? "configured" : "not_configured",
         twilio: process.env.TWILIO_ACCOUNT_SID ? "configured" : "not_configured",
       },
+      database: "use /api/health/ready",
     },
     { status: 200 }
   );

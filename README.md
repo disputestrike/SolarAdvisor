@@ -42,7 +42,10 @@ Open http://localhost:3000
 
 1. New Project → Add MySQL plugin
 2. New Service → Deploy from GitHub → `disputestrike/SolarAdvisor`
-3. **Link MySQL to the web service** so Railway injects `DATABASE_URL` / `MYSQL_URL` (or set `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE` manually). The app reads **`DATABASE_URL`** / **`MYSQL_URL`** first, then split variables.
+3. **MySQL connection on the web service**  
+   - In Railway → **SolarAdvisor** → **Variables**: **delete** any placeholder `DATABASE_URL` copied from `.env.example` (e.g. `your-password@your-railway-host`). That fake URL breaks connects and migrations.  
+   - **Add variable** → **Reference** → select your **MySQL** service → use **`MYSQL_URL`** (private `RAILWAY_PRIVATE_DOMAIN`, works on Railway’s network).  
+   - The app prefers **`MYSQL_URL`** over `DATABASE_URL`. Default MySQL DB name is often **`railway`** — either keep that in your URL or create database `solaradvisor` and point there.
 4. **Database migrations (MySQL)**  
    - On each deploy, **`migrate.sql` runs in the background** (after the HTTP server binds) so **Railway `/api/health` is not blocked** by slow or failing MySQL (**`ETIMEDOUT`**). Uses `CREATE TABLE IF NOT EXISTS`, so it is safe to repeat. If MySQL is unreachable, the app still serves traffic — fix networking (link MySQL, use private `DATABASE_URL`), then redeploy or run SQL manually. Set **`SKIP_DB_MIGRATE=1`** to skip automatic migrate entirely.  
    - **Manual / troubleshooting:** `npm run db:migrate` or paste `migrate.sql` into Railway → MySQL → **Query**.  
@@ -97,7 +100,8 @@ Lead value: Hot=$150 · Medium=$75 · Cold=$25
 | PATCH | `/api/admin/leads` | Cookie | Update lead |
 | POST | `/api/admin/auth` | — | Login |
 | DELETE | `/api/admin/auth` | Cookie | Logout |
-| GET | `/api/health` | — | Health probe |
+| GET | `/api/health` | — | Liveness (fast, no DB) |
+| GET | `/api/health/ready` | — | Readiness (MySQL ping) |
 
 ---
 

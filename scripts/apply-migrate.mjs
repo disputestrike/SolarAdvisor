@@ -14,16 +14,29 @@ import mysql from "mysql2/promise";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
+/** Same as src/db: prefer MYSQL_URL; skip .env.example DATABASE_URL placeholders. */
+function pickMysqlUri() {
+  const ordered = [
+    process.env.MYSQL_URL,
+    process.env.MYSQLPRIVATE_URL,
+    process.env.DATABASE_URL,
+  ].filter(Boolean);
+  for (const raw of ordered) {
+    const u = String(raw).trim();
+    if (!/^mysql:\/\//i.test(u)) continue;
+    if (/your-password|your-railway-host/i.test(u)) continue;
+    return u;
+  }
+  return undefined;
+}
+
 function getConnectionConfig() {
   const connectTimeout = parseInt(
     process.env.MYSQL_CONNECT_TIMEOUT_MS ||
       (process.env.STARTUP_MIGRATE === "1" ? "5000" : "10000"),
     10
   );
-  const uri =
-    process.env.DATABASE_URL ||
-    process.env.MYSQL_URL ||
-    process.env.MYSQLPRIVATE_URL;
+  const uri = pickMysqlUri();
   if (uri && /^mysql:\/\//i.test(uri.trim())) {
     return {
       uri: uri.trim(),
@@ -56,11 +69,7 @@ function getConnectionConfig() {
 }
 
 function hasDbEnv() {
-  const uri =
-    process.env.DATABASE_URL ||
-    process.env.MYSQL_URL ||
-    process.env.MYSQLPRIVATE_URL;
-  if (uri && /^mysql:\/\//i.test(uri.trim())) return true;
+  if (pickMysqlUri()) return true;
   return !!(process.env.MYSQL_HOST || process.env.MYSQLHOST);
 }
 
