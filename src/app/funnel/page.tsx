@@ -383,28 +383,46 @@ function StepAddressEnergy({
         Typical monthly electric bill
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 20 }}>
-        {BILL_OPTIONS.map((opt) => (
-          <button
-            key={opt.label}
-            type="button"
-            onClick={() => {
-              update("monthlyBill", opt.value);
-              setError("");
-            }}
-            style={{
-              padding: "12px 6px",
-              borderRadius: 8,
-              fontWeight: 600,
-              fontSize: "0.82rem",
-              border: data.monthlyBill === opt.value ? "2px solid #ea580c" : "2px solid #e2e8f0",
-              background: data.monthlyBill === opt.value ? "#fff7ed" : "white",
-              color: data.monthlyBill === opt.value ? "#c2410c" : "#475569",
-              cursor: "pointer",
-            }}
-          >
-            {opt.label}
-          </button>
-        ))}
+        {BILL_OPTIONS.map((opt) => {
+          const selected =
+            data.monthlyBill !== null && Number(data.monthlyBill) === opt.value;
+          return (
+            <button
+              key={opt.label}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => {
+                update("monthlyBill", opt.value);
+                setError("");
+              }}
+              style={{
+                padding: "12px 6px",
+                borderRadius: 8,
+                fontWeight: selected ? 700 : 600,
+                fontSize: "0.82rem",
+                fontFamily: "var(--font-brand)",
+                cursor: "pointer",
+                transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+                WebkitAppearance: "none",
+                appearance: "none",
+                ...(selected
+                  ? {
+                      border: "2px solid #c2410c",
+                      background: "#ea580c",
+                      color: "#ffffff",
+                      boxShadow: "0 2px 10px rgba(234, 88, 12, 0.45)",
+                    }
+                  : {
+                      border: "2px solid #cbd5e1",
+                      background: "#ffffff",
+                      color: "#475569",
+                    }),
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
 
       {error && resolved && <p style={{ color: "#dc2626", fontSize: "0.85rem", marginBottom: 12 }}>{error}</p>}
