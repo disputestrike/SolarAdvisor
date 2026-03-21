@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense, type CSSProperties } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, type CSSProperties } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import BrandLogo from "@/components/BrandLogo";
 import PlacesAddressField, { type ResolvedPlace } from "@/components/PlacesAddressField";
@@ -169,7 +169,7 @@ function quickEstimate(bill: number): Estimate {
 }
 
 /* ─── Step Components ───────────────────────────────────────────────── */
-function StepAddressEnergyInner({
+function StepAddressEnergy({
   data,
   update,
   onNext,
@@ -178,10 +178,9 @@ function StepAddressEnergyInner({
   update: (k: keyof FormData, v: string | boolean | number | null) => void;
   onNext: () => void;
 }) {
-  const searchParams = useSearchParams();
-  const zipFromUrl = searchParams.get("zip")?.replace(/\D/g, "").slice(0, 5) ?? "";
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-  const [manualMode, setManualMode] = useState(() => !mapsKey || zipFromUrl.length === 5);
+  /** Default manual when no Maps key; ?zip= switches to manual on client (do not use useSearchParams — Suspense stuck “Loading…” in prod). */
+  const [manualMode, setManualMode] = useState(!mapsKey);
   const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
   const [zipInfo, setZipInfo] = useState<ZipInfo | null>(null);
   const [loadingZip, setLoadingZip] = useState(false);
@@ -234,10 +233,11 @@ function StepAddressEnergyInner({
     applyResolved(m);
   }, [manualMode, data.streetAddress, data.city, data.state, data.zipCode, applyResolved]);
 
-  useEffect(() => {
-    const z = searchParams.get("zip")?.replace(/\D/g, "").slice(0, 5) ?? "";
-    if (z.length === 5 && mapsKey) setManualMode(true);
-  }, [searchParams, mapsKey]);
+  useLayoutEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("zip");
+    const z = raw?.replace(/\D/g, "").slice(0, 5) ?? "";
+    if (z.length === 5) setManualMode(true);
+  }, [mapsKey]);
 
   /** Prefill ZIP from URL → load region line (state-only if no city in DB). */
   useEffect(() => {
@@ -433,24 +433,6 @@ function StepAddressEnergyInner({
         Next →
       </button>
     </div>
-  );
-}
-
-function StepAddressEnergy(props: {
-  data: FormData;
-  update: (k: keyof FormData, v: string | boolean | number | null) => void;
-  onNext: () => void;
-}) {
-  return (
-    <Suspense
-      fallback={
-        <div style={{ padding: 32, textAlign: "center", color: "#64748b", fontFamily: "var(--font-brand)" }}>
-          Loading…
-        </div>
-      }
-    >
-      <StepAddressEnergyInner {...props} />
-    </Suspense>
   );
 }
 
