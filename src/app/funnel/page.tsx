@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import BrandLogo from "@/components/BrandLogo";
@@ -10,7 +11,10 @@ import ManualAddressFields, { buildManualResolved } from "@/components/ManualAdd
 
 const SatelliteRoof = dynamic(() => import("@/components/SatelliteRoof"), { ssr: false });
 const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
-const AiImage = dynamic(() => import("@/components/AiImage"), { ssr: false });
+
+// Reliable background — no API key needed, always renders
+const FUNNEL_MAP_BG =
+  "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=2400&q=82";
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 interface FormData {
@@ -1080,15 +1084,14 @@ export default function FunnelPage() {
 
   return (
     <div style={{ position: "relative", minHeight: "100vh", fontFamily: "var(--font-brand)" }}>
-      {/* AI-generated photo-realistic background */}
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-        <AiImage
-          type="roof_overlay"
-          alt=""
-          priority
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-        />
-      </div>
+      <Image
+        src={FUNNEL_MAP_BG}
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        style={{ objectFit: "cover" }}
+      />
       <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.52)", pointerEvents: "none" }} aria-hidden />
 
       <div style={{ position: "relative", zIndex: 2 }}>
