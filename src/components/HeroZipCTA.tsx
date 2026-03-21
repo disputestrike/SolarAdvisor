@@ -6,23 +6,23 @@ export default function HeroZipCTA() {
   const [zip, setZip] = useState("");
   const [hint, setHint] = useState("");
 
-  /** Full page navigation — reliable if client router fails after runtime errors. */
-  const go = () => {
-    const z = zip.replace(/\D/g, "").slice(0, 5);
-    if (z.length === 5) {
-      setHint("");
-    } else if (z.length > 0) {
-      setHint("Enter a 5-digit ZIP to prefill your estimate.");
-    } else {
-      setHint("");
-    }
-    if (typeof window !== "undefined") {
-      window.location.assign(z.length === 5 ? `/funnel?zip=${z}` : "/funnel");
-    }
-  };
-
   return (
     <div style={{ maxWidth: 520, margin: "0 auto" }}>
+      <form
+        action="/funnel"
+        method="get"
+        onSubmit={(e) => {
+          const z = zip.replace(/\D/g, "").slice(0, 5);
+          e.preventDefault();
+          if (z.length > 0 && z.length < 5) {
+            setHint("Enter a 5-digit ZIP to prefill your estimate.");
+            return;
+          }
+          setHint("");
+          window.location.assign(z.length === 5 ? `/funnel?zip=${z}` : "/funnel");
+        }}
+        style={{ margin: 0 }}
+      >
       <div
         style={{
           display: "flex",
@@ -37,6 +37,7 @@ export default function HeroZipCTA() {
       >
         <input
           type="text"
+          name="zip"
           inputMode="numeric"
           autoComplete="postal-code"
           placeholder="ZIP code"
@@ -46,7 +47,6 @@ export default function HeroZipCTA() {
             setHint("");
             setZip(e.target.value.replace(/\D/g, "").slice(0, 5));
           }}
-          onKeyDown={(e) => e.key === "Enter" && go()}
           style={{
             flex: "1 1 140px",
             minWidth: 140,
@@ -60,8 +60,7 @@ export default function HeroZipCTA() {
           }}
         />
         <button
-          type="button"
-          onClick={go}
+          type="submit"
           style={{
             flex: "1 1 160px",
             padding: "18px 28px",
@@ -79,6 +78,7 @@ export default function HeroZipCTA() {
           Calculate cost
         </button>
       </div>
+      </form>
       {hint && (
         <p
           style={{

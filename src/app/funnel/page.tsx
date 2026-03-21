@@ -189,10 +189,13 @@ function StepAddressEnergy({
     if (zip.length !== 5) return;
     setLoadingZip(true);
     try {
-      const res = await fetch(`/api/leads/zip?zip=${zip}`);
-      const d = await res.json();
+      const res = await fetch(`/api/leads/zip?zip=${encodeURIComponent(zip)}`);
+      if (!res.ok) return;
+      const d = (await res.json()) as ZipInfo & { zip?: string; error?: string };
       if (d.state) setZipInfo(d);
-    } catch { /* optional */ }
+    } catch {
+      /* optional */
+    }
     setLoadingZip(false);
   }, []);
 
@@ -228,6 +231,21 @@ function StepAddressEnergy({
     });
     applyResolved(m);
   }, [manualMode, data.streetAddress, data.city, data.state, data.zipCode, applyResolved]);
+
+  /** Landing with ?zip= from home CTA: show manual address + ZIP (Places-only mode hid the prefilled ZIP). */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const z = new URLSearchParams(window.location.search).get("zip");
+    if (z && /^\d{5}$/.test(z)) {
+      setManualMode(true);
+    }
+  }, []);
+
+  /** Prefill ZIP from URL → load region line (state-only if no city in DB). */
+  useEffect(() => {
+    const z = data.zipCode.replace(/\D/g, "").slice(0, 5);
+    if (z.length === 5) void lookupZip(z);
+  }, [data.zipCode, lookupZip]);
 
   const handleNext = () => {
     if (!resolved) {
@@ -331,7 +349,7 @@ function StepAddressEnergy({
       )}
 
       {loadingZip && <p style={{ fontSize: "0.8rem", color: "#64748b" }}>Loading regional incentives…</p>}
-      {zipInfo?.city && (
+      {zipInfo?.state && (
         <div
           style={{
             background: "#ecfdf5",
@@ -343,7 +361,7 @@ function StepAddressEnergy({
             marginBottom: 16,
           }}
         >
-          {zipInfo.city}, {zipInfo.state}
+          {zipInfo.city ? `${zipInfo.city}, ${zipInfo.state}` : `ZIP ${data.zipCode.replace(/\D/g, "").slice(0, 5)} · ${zipInfo.state}`}
           {zipInfo.incentives?.stateRebate
             ? ` · up to $${zipInfo.incentives.stateRebate.toLocaleString()} state programs in some areas`
             : ""}

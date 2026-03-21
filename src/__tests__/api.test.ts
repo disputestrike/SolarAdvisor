@@ -232,6 +232,42 @@ describe("GET /api/leads (duplicate check)", () => {
   });
 });
 
+// ─── GET /api/leads/zip ─────────────────────────────────────────────────────
+describe("GET /api/leads/zip", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test("returns 400 for invalid zip", async () => {
+    const { GET } = await import("@/app/api/leads/zip/route");
+    const req = new NextRequest("http://localhost/api/leads/zip?zip=12");
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+  });
+
+  test("returns state from ZIP prefix when cache misses (78701 → TX)", async () => {
+    mockQ1.mockResolvedValue(null);
+    const { GET } = await import("@/app/api/leads/zip/route");
+    const req = new NextRequest("http://localhost/api/leads/zip?zip=78701");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.zip).toBe("78701");
+    expect(data.state).toBe("TX");
+    expect(data.city).toBeNull();
+  });
+
+  test("falls back when DB errors", async () => {
+    mockQ1.mockRejectedValue(new Error("connection refused"));
+    const { GET } = await import("@/app/api/leads/zip/route");
+    const req = new NextRequest("http://localhost/api/leads/zip?zip=78701");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.state).toBe("TX");
+  });
+});
+
 // ─── /api/health (liveness — no DB) ───────────────────────────────────────────
 describe("GET /api/health", () => {
   test("returns 200 immediately without touching DB", async () => {
