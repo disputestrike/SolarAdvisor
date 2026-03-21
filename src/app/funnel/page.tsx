@@ -240,12 +240,21 @@ function StepAddressEnergy({
   }, [data.zipCode, lookupZip]);
 
   const handleNext = () => {
-    if (!resolved) {
-      setError(
-        manualMode
-          ? "Please complete street, city, state (2 letters), and a 5-digit ZIP."
-          : "Please select your full address from the dropdown list."
-      );
+    if (manualMode) {
+      const m = buildManualResolved({
+        streetAddress: data.streetAddress,
+        city: data.city,
+        state: data.state,
+        zipCode: data.zipCode,
+      });
+      if (!m) {
+        setError("Please complete street, city, state (2 letters), and a 5-digit ZIP.");
+        return;
+      }
+      /** Sync parent + local resolved at submit time — don’t rely on effect timing (fixes Next stuck when resolved state lags). */
+      applyResolved(m);
+    } else if (!resolved) {
+      setError("Please select your full address from the dropdown list.");
       return;
     }
     if (!data.utilityProvider.trim()) {
@@ -505,7 +514,7 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
           <button type="button" onClick={() => { update("isHomeowner", true); setError(""); }} style={btn(data.isHomeowner === true)}>
             Yes
           </button>
-          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(false)}>
+          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(data.isHomeowner === false)}>
             No
           </button>
         </div>
@@ -1068,6 +1077,10 @@ export default function FunnelPage() {
 
   const stepLabels = ["Location", "Property", "Estimate", "Contact"];
 
+  /** Step 3 must never render an empty card if monthlyBill exists but estimate state hasn’t flushed yet. */
+  const estimateForStep3 =
+    estimate ?? (formData.monthlyBill != null ? quickEstimate(formData.monthlyBill) : null);
+
   return (
     <div style={{ position: "relative", minHeight: "100vh", fontFamily: "var(--font-brand)" }}>
       <Image
@@ -1127,7 +1140,9 @@ export default function FunnelPage() {
         }}>
           {step === 1 && <StepAddressEnergy data={formData} update={update} onNext={goNext} />}
           {step === 2 && <StepProperty data={formData} update={update} onNext={goNext} onBack={goBack} />}
-          {step === 3 && estimate && <StepEstimate data={formData} estimate={estimate} update={update} onNext={goNext} onBack={goBack} />}
+          {step === 3 && estimateForStep3 && (
+            <StepEstimate data={formData} estimate={estimateForStep3} update={update} onNext={goNext} onBack={goBack} />
+          )}
           {step === 4 && (
             <StepContact
               data={formData}

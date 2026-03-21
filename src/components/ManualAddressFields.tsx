@@ -25,10 +25,11 @@ export function buildManualResolved(p: {
   const state = p.state.trim().toUpperCase().slice(0, 2);
   if (!street || !city || state.length !== 2 || z.length !== 5) return null;
   const formatted = `${street}, ${city}, ${state} ${z}`;
-  const uid =
-    typeof globalThis.crypto !== "undefined" && globalThis.crypto.randomUUID
-      ? globalThis.crypto.randomUUID().replace(/-/g, "")
-      : String(Date.now());
+  /** Stable id for the same address — avoids new UUID every effect run (fewer churn / clearer lead keys). */
+  const key = `${street}|${city}|${state}|${z}`;
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  const placeId = `manual_${Math.abs(h).toString(16)}`;
   return {
     formattedAddress: formatted,
     streetAddress: street,
@@ -37,7 +38,7 @@ export function buildManualResolved(p: {
     zipCode: z,
     lat: null,
     lng: null,
-    placeId: `manual_${uid}`,
+    placeId,
   };
 }
 
