@@ -40,6 +40,11 @@ export default function LiveChat() {
     return () => clearTimeout(t);
   }, []);
 
+  // Abort any in-flight stream on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
   // Auto-scroll
   useEffect(() => {
     if (open && !minimized) {

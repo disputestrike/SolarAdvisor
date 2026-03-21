@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import BrandLogo from "@/components/BrandLogo";
@@ -11,9 +10,7 @@ import ManualAddressFields, { buildManualResolved } from "@/components/ManualAdd
 
 const SatelliteRoof = dynamic(() => import("@/components/SatelliteRoof"), { ssr: false });
 const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
-
-const FUNNEL_MAP_BG =
-  "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=2400&q=82";
+const AiImage = dynamic(() => import("@/components/AiImage"), { ssr: false });
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 interface FormData {
@@ -511,10 +508,10 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
           Do you own this property or have authority to install solar?
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <button type="button" onClick={() => { update("isHomeowner", true); setError(""); }} style={btn(data.isHomeowner === true)}>
+          <button type="button" onClick={() => { update("isHomeowner", true); setError(""); }} style={btn(data.isHomeowner !== null && Boolean(data.isHomeowner))}>
             Yes
           </button>
-          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(data.isHomeowner === false)}>
+          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(data.isHomeowner !== null && !data.isHomeowner)}>
             No
           </button>
         </div>
@@ -1083,15 +1080,16 @@ export default function FunnelPage() {
 
   return (
     <div style={{ position: "relative", minHeight: "100vh", fontFamily: "var(--font-brand)" }}>
-      <Image
-        src={FUNNEL_MAP_BG}
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        style={{ objectFit: "cover" }}
-      />
-      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)", pointerEvents: "none" }} aria-hidden />
+      {/* AI-generated photo-realistic background */}
+      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+        <AiImage
+          type="roof_overlay"
+          alt=""
+          priority
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      </div>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.52)", pointerEvents: "none" }} aria-hidden />
 
       <div style={{ position: "relative", zIndex: 2 }}>
       {/* Top bar */}

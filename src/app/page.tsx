@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import dynamic from "next/dynamic";
 import BrandLogo from "@/components/BrandLogo";
 import DoeTrustBadge from "@/components/DoeTrustBadge";
@@ -8,15 +7,11 @@ import HeroZipCTA from "@/components/HeroZipCTA";
 
 const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
 const SatelliteRoofDemo = dynamic(() => import("@/components/SatelliteRoofDemo"), { ssr: false });
+const AiImage = dynamic(() => import("@/components/AiImage"), { ssr: false });
 
 /** Social proof counter — static display; tune to match your analytics when available. */
 const ONLINE_ESTIMATES_COUNT = "3,372,403";
 const ONLINE_ESTIMATES_SINCE = 2008;
-
-const HERO_SKY =
-  "https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=2400&q=80";
-const STRIP_PANELS =
-  "https://images.unsplash.com/photo-1611365892117-00ac5ef43c90?auto=format&fit=crop&w=2000&q=85";
 
 const TESTIMONIALS = [
   { name: "Marcus T.", location: "Phoenix, AZ", savings: "$187/mo", quote: "My bill dropped from $340 to $153. SolarAdvisor made the whole process painless.", stars: 5 },
@@ -107,15 +102,15 @@ export default function HomePage() {
 
       {/* ——— HERO ——— */}
       <section className="hero-pro" style={{ position: "relative", padding: 0 }}>
-        <Image
-          src={HERO_SKY}
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="hero-pro__bg"
-          style={{ objectPosition: "center 30%" }}
-        />
+        {/* AI-generated photo-realistic solar home background */}
+        <div className="hero-pro__bg" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+          <AiImage
+            type="hero_home_panels"
+            alt=""
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 30%" }}
+            priority
+          />
+        </div>
         <div className="hero-pro__overlay" aria-hidden />
         <div className="hero-pro__inner" style={{ padding: "clamp(72px, 10vh, 120px) clamp(20px, 5vw, 48px)" }}>
           <p style={{
@@ -165,13 +160,11 @@ export default function HomePage() {
       </section>
 
       {/* Photoreal strip — grounds the page in real hardware */}
-      <section style={{ position: "relative", height: "min(38vw, 420px)", minHeight: 200 }}>
-        <Image
-          src={STRIP_PANELS}
-          alt="Solar panels installed on a residential roof"
-          fill
-          sizes="100vw"
-          style={{ objectFit: "cover", objectPosition: "center 60%" }}
+      <section style={{ position: "relative", height: "min(38vw, 420px)", minHeight: 200, overflow: "hidden" }}>
+        <AiImage
+          type="neighborhood_solar"
+          alt="Solar panels installed on residential roofs"
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "center 60%" }}
         />
         <div
           style={{
