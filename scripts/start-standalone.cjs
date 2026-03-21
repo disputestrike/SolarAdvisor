@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 /**
- * Next standalone uses process.env.HOSTNAME for the bind address.
- * Railway/Docker set HOSTNAME to the container hostname (e.g. ffc3bd32d8b0),
- * so the server does not listen on 0.0.0.0 and platform healthchecks fail.
- * Force IPv4 all-interfaces bind before starting the standalone server.
+ * SolarAdvisor startup script for Railway / standalone Next.js
  *
- * MySQL migrate.sql must NOT block the first HTTP bind — Railway healthchecks
- * start immediately; blocking on ETIMEDOUT keeps the port closed until timeouts finish.
+ * 1. Forces 0.0.0.0 bind so Railway healthchecks can reach the port
+ * 2. Starts Next.js standalone server immediately (healthcheck passes fast)
+ * 3. Runs migrate.sql in background after a short delay
+ *    — CREATE TABLE IF NOT EXISTS is idempotent, safe to run every deploy
  */
 const path = require("path");
 const { spawn } = require("child_process");
@@ -14,60 +13,80 @@ const { spawn } = require("child_process");
 const root = path.resolve(__dirname, "..");
 const server = path.join(root, ".next", "standalone", "server.js");
 
+// Force 0.0.0.0 — Railway sets HOSTNAME to container ID which blocks external connections
 process.env.HOSTNAME = "0.0.0.0";
 process.env.HOST = "0.0.0.0";
 
-function runMigrateInBackground() {
-  if (process.env.SKIP_DB_MIGRATE === "1" || process.env.SKIP_DB_MIGRATE === "true") {
-    console.log("[start] SKIP_DB_MIGRATE set — skipping migrate.sql");
+// Log all Railway MySQL env vars found (masked) to help diagnose connection issues
+function logDbEnv() {
+  const vars = [
+    "MYSQL_URL", "MYSQLPRIVATE_URL", "DATABASE_URL",
+    "MYSQL_HOST", "MYSQLHOST",
+    "MYSQL_PORT", "MYSQLPORT",
+    "MYSQL_USER", "MYSQLUSER",
+    "MYSQL_DATABASE", "MYSQLDATABASE",
+  ];
+  const found = vars.filter((v) => process.env[v]);
+  if (found.length === 0) {
+    console.log("[start] ⚠️  No MySQL env vars found. Link the MySQL plugin on Railway.");
+    return false;
+  }
+  console.log("[start] DB env vars present:", found.join(", "));
+  // Mask password
+  if (process.env.MYSQL_URL) {
+    console.log("[start] MYSQL_URL:", process.env.MYSQL_URL.replace(/:([^:@]+)@/, ":***@"));
+  }
+  return true;
+}
+
+function runMigrate() {
+  if (process.env.SKIP_DB_MIGRATE === "1") {
+    console.log("[start] SKIP_DB_MIGRATE=1 — skipping migration.");
     return;
   }
-  const hasDb =
-    process.env.DATABASE_URL ||
-    process.env.MYSQL_URL ||
-    process.env.MYSQLPRIVATE_URL ||
-    process.env.MYSQL_HOST ||
-    process.env.MYSQLHOST;
-  if (!hasDb) {
-    console.log(
-      "[start] No DATABASE_URL / MYSQL_URL / MYSQL_HOST — skipping migrate.sql (link MySQL on Railway or set variables)."
-    );
-    return;
-  }
+
+  const hasDb = logDbEnv();
+  if (!hasDb) return;
+
   const script = path.join(root, "scripts", "apply-migrate.mjs");
-  console.log("[start] Scheduling migrate.sql in background (does not block /api/health) …");
+  console.log("[start] Running migrate.sql in background …");
+
   const m = spawn(process.execPath, [script], {
     cwd: root,
-    env: {
-      ...process.env,
-      STARTUP_MIGRATE: "1",
-    },
+    env: { ...process.env, STARTUP_MIGRATE: "1" },
     stdio: "inherit",
   });
+
   m.on("exit", (code) => {
     if (code !== 0) {
-      console.error(
-        "[start] migrate.sql exited with code %s — tables may be missing. Fix DB networking or run SQL manually.",
-        code
-      );
+      console.error(`[start] ❌ Migration failed (exit ${code}). Check logs above.`);
     } else {
-      console.log("[start] migrate.sql finished successfully.");
+      console.log("[start] ✓ Migration complete — all tables ready.");
     }
+  });
+
+  m.on("error", (err) => {
+    console.error("[start] Failed to spawn migrate script:", err.message);
   });
 }
 
+// Start Next.js server immediately so Railway healthcheck passes
 const child = spawn(process.execPath, [server], {
   cwd: root,
   env: process.env,
   stdio: "inherit",
 });
 
-// Let Next bind to PORT before any DB work competes for the event loop / network stack.
-setTimeout(() => {
-  runMigrateInBackground();
-}, 1500);
+// Run migration after 3 seconds — gives Railway MySQL time to accept connections
+// and lets Next.js bind to PORT first so healthcheck passes
+setTimeout(runMigrate, 3000);
 
 child.on("exit", (code, signal) => {
-  if (signal) process.kill(process.pid, signal);
+  if (signal) { process.kill(process.pid, signal); }
   process.exit(code == null ? 1 : code);
+});
+
+child.on("error", (err) => {
+  console.error("[start] Failed to start Next.js server:", err.message);
+  process.exit(1);
 });

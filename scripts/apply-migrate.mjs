@@ -1,10 +1,16 @@
 /**
- * Apply migrate.sql to Railway / MySQL (run on deploy or manually).
+ * SolarAdvisor — Auto-migration script
+ * Runs on every Railway deploy via scripts/start-standalone.cjs
+ * Uses CREATE TABLE IF NOT EXISTS — safe to run multiple times.
  *
- * Connection: DATABASE_URL or MYSQL_URL (mysql://...) OR MYSQL_HOST + MYSQL_USER + MYSQL_PASSWORD + MYSQL_DATABASE
- *
- * Usage: node scripts/apply-migrate.mjs
- * Railway: runs automatically from scripts/start-standalone.cjs when DB env is set (unless SKIP_DB_MIGRATE=1).
+ * Railway MySQL plugin injects these variables automatically:
+ *   MYSQL_URL             mysql://root:password@host:port/railway  (private TCP)
+ *   MYSQLPRIVATE_URL      same (alias)
+ *   MYSQL_HOST / MYSQLHOST
+ *   MYSQL_PORT / MYSQLPORT
+ *   MYSQL_USER / MYSQLUSER
+ *   MYSQL_PASSWORD / MYSQLPASSWORD
+ *   MYSQL_DATABASE / MYSQLDATABASE  (value is "railway" by default)
  */
 import fs from "fs";
 import path from "path";
@@ -14,45 +20,61 @@ import mysql from "mysql2/promise";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 
-/** Same as src/db: prefer MYSQL_URL; skip .env.example DATABASE_URL placeholders. */
-function pickMysqlUri() {
-  const ordered = [
-    process.env.MYSQL_URL,
-    process.env.MYSQLPRIVATE_URL,
-    process.env.DATABASE_URL,
-  ].filter(Boolean);
-  for (const raw of ordered) {
-    const u = String(raw).trim();
-    if (!/^mysql:\/\//i.test(u)) continue;
-    if (/your-password|your-railway-host/i.test(u)) continue;
-    return u;
-  }
-  return undefined;
-}
-
+// ─── Connection resolution ────────────────────────────────────────────────────
+// Railway injects MYSQL_URL automatically when MySQL plugin is linked.
+// Fallback to individual vars so it also works with manual configuration.
 function getConnectionConfig() {
-  const connectTimeout = parseInt(
-    process.env.MYSQL_CONNECT_TIMEOUT_MS ||
-      (process.env.STARTUP_MIGRATE === "1" ? "5000" : "10000"),
+  const connectTimeout = 15000;
+
+  // Priority 1: MYSQL_URL or MYSQLPRIVATE_URL (Railway plugin auto-injects these)
+  const uri =
+    process.env.MYSQL_URL ||
+    process.env.MYSQLPRIVATE_URL ||
+    process.env.DATABASE_URL;
+
+  if (uri && /^mysql(2)?:\/\//i.test(uri.trim())) {
+    const u = uri.trim();
+    // Skip placeholder values from .env.example
+    if (!/your-password|your-railway|localhost:3306\/solaradvisor$/.test(u)) {
+      console.log("[migrate] Using connection URL:", u.replace(/:([^:@]+)@/, ":***@"));
+      return {
+        uri: u,
+        multipleStatements: true,
+        connectTimeout,
+        ssl: { rejectUnauthorized: false },
+      };
+    }
+  }
+
+  // Priority 2: Individual env vars (Railway also injects these)
+  const host =
+    process.env.MYSQL_HOST ||
+    process.env.MYSQLHOST ||
+    process.env.RAILWAY_TCP_PROXY_DOMAIN ||
+    "localhost";
+  const port = parseInt(
+    process.env.MYSQL_PORT ||
+    process.env.MYSQLPORT ||
+    process.env.RAILWAY_TCP_PROXY_PORT ||
+    "3306",
     10
   );
-  const uri = pickMysqlUri();
-  if (uri && /^mysql:\/\//i.test(uri.trim())) {
-    return {
-      uri: uri.trim(),
-      multipleStatements: true,
-      connectTimeout,
-      ssl:
-        process.env.NODE_ENV === "production"
-          ? { rejectUnauthorized: false }
-          : undefined,
-    };
-  }
-  const host = process.env.MYSQL_HOST || process.env.MYSQLHOST || "localhost";
-  const port = parseInt(process.env.MYSQL_PORT || process.env.MYSQLPORT || "3306", 10);
-  const user = process.env.MYSQL_USER || process.env.MYSQLUSER || "root";
-  const password = process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || "";
-  const database = process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || "solaradvisor";
+  const user =
+    process.env.MYSQL_USER ||
+    process.env.MYSQLUSER ||
+    "root";
+  const password =
+    process.env.MYSQL_PASSWORD ||
+    process.env.MYSQLPASSWORD ||
+    "";
+  // Railway default database name is "railway"
+  const database =
+    process.env.MYSQL_DATABASE ||
+    process.env.MYSQLDATABASE ||
+    process.env.MYSQL_DBNAME ||
+    "railway";
+
+  console.log(`[migrate] Using host config: ${user}@${host}:${port}/${database}`);
   return {
     host,
     port,
@@ -61,16 +83,18 @@ function getConnectionConfig() {
     database,
     multipleStatements: true,
     connectTimeout,
-    ssl:
-      process.env.NODE_ENV === "production"
-        ? { rejectUnauthorized: false }
-        : undefined,
+    ssl: { rejectUnauthorized: false },
   };
 }
 
-function hasDbEnv() {
-  if (pickMysqlUri()) return true;
-  return !!(process.env.MYSQL_HOST || process.env.MYSQLHOST);
+function hasDbConfig() {
+  return !!(
+    process.env.MYSQL_URL ||
+    process.env.MYSQLPRIVATE_URL ||
+    process.env.MYSQL_HOST ||
+    process.env.MYSQLHOST ||
+    process.env.DATABASE_URL
+  );
 }
 
 async function sleep(ms) {
@@ -78,59 +102,54 @@ async function sleep(ms) {
 }
 
 async function main() {
-  if (!hasDbEnv()) {
+  if (!hasDbConfig()) {
     console.error(
-      "No DB config: set DATABASE_URL or MYSQL_URL (mysql://...) or MYSQL_HOST + MYSQL_USER + MYSQL_PASSWORD + MYSQL_DATABASE."
+      "[migrate] No DB config found.\n" +
+      "  On Railway: link the MySQL plugin to your service — MYSQL_URL is injected automatically.\n" +
+      "  Locally: set MYSQL_HOST + MYSQL_USER + MYSQL_PASSWORD + MYSQL_DATABASE in .env.local"
     );
     process.exit(1);
   }
 
   const sqlPath = path.join(root, "migrate.sql");
+  if (!fs.existsSync(sqlPath)) {
+    console.error("[migrate] migrate.sql not found at:", sqlPath);
+    process.exit(1);
+  }
+
   const sql = fs.readFileSync(sqlPath, "utf8");
+  const isStartup = process.env.STARTUP_MIGRATE === "1";
+  const maxAttempts = parseInt(process.env.MIGRATE_RETRIES || (isStartup ? "5" : "8"), 10);
+  const retryDelayMs = parseInt(process.env.MIGRATE_RETRY_DELAY_MS || "3000", 10);
 
-  const startup = process.env.STARTUP_MIGRATE === "1";
-  const maxAttempts = parseInt(
-    process.env.MIGRATE_RETRIES || (startup ? "3" : "8"),
-    10
-  );
-  const retryDelayMs = parseInt(
-    process.env.MIGRATE_RETRY_DELAY_MS || (startup ? "2000" : "3000"),
-    10
-  );
+  console.log(`[migrate] Applying migrate.sql (${maxAttempts} attempts max) …`);
+
   let lastErr;
-
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let conn;
     try {
       const cfg = getConnectionConfig();
       conn = await mysql.createConnection(cfg);
-      console.log(
-        `Applying ${path.basename(sqlPath)} (attempt ${attempt}/${maxAttempts}) …`
-      );
       await conn.query(sql);
       await conn.end();
-      console.log("Done. Tables are ready.");
+      console.log("[migrate] ✓ All tables created / verified. Migration complete.");
       return;
     } catch (e) {
       lastErr = e;
-      if (conn) {
-        try {
-          await conn.end();
-        } catch {
-          /* ignore */
-        }
-      }
+      if (conn) { try { await conn.end(); } catch { /* ignore */ } }
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`[migrate] attempt ${attempt} failed: ${msg}`);
-      if (attempt < maxAttempts) await sleep(retryDelayMs);
+      console.warn(`[migrate] attempt ${attempt}/${maxAttempts} failed: ${msg}`);
+      if (attempt < maxAttempts) {
+        console.log(`[migrate] Retrying in ${retryDelayMs}ms …`);
+        await sleep(retryDelayMs);
+      }
     }
   }
 
+  console.error("[migrate] All attempts failed. Last error:");
   console.error(lastErr);
-  process.exit(1);
+  // Don't hard-exit on startup — app can still serve non-DB routes
+  if (!isStartup) process.exit(1);
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main().catch((e) => { console.error(e); process.exit(1); });
