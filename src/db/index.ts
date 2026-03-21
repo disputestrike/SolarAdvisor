@@ -2,8 +2,6 @@ import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import * as schema from "./schema";
 
-// mysql2 ExecuteValues is: string | number | bigint | Date | Buffer | null
-// We need to coerce undefined → null
 type SqlParam = string | number | bigint | Date | Buffer | null;
 
 function toSqlParams(
@@ -18,16 +16,36 @@ function toSqlParams(
 
 let _pool: mysql.Pool | null = null;
 
-/** Prefer Railway MYSQL_URL over a pasted DATABASE_URL from .env.example (wrong host/password). */
+/**
+ * Resolve MySQL connection from Railway env vars.
+ *
+ * Railway MySQL plugin injects ALL of these — we try each in priority order:
+ *   MYSQL_URL              mysql://root:pass@private-domain:3306/railway
+ *   MYSQLPRIVATE_URL       alias
+ *   MYSQL_PUBLIC_URL       public TCP proxy URL (fallback)
+ *   DATABASE_URL           only if it looks like a real mysql:// URL
+ *
+ * Individual var fallback (Railway also injects these):
+ *   MYSQLHOST / MYSQL_HOST / RAILWAY_PRIVATE_DOMAIN
+ *   MYSQLPORT / MYSQL_PORT
+ *   MYSQLUSER / MYSQL_USER
+ *   MYSQLPASSWORD / MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD
+ *   MYSQLDATABASE / MYSQL_DATABASE  (Railway default: "railway")
+ */
 function getMysqlUri(): string | undefined {
-  const ordered = [
+  const candidates = [
     process.env.MYSQL_URL,
     process.env.MYSQLPRIVATE_URL,
+    process.env.MYSQL_PUBLIC_URL,
     process.env.DATABASE_URL,
   ].filter(Boolean) as string[];
-  for (const raw of ordered) {
+
+  for (const raw of candidates) {
     const u = raw.trim();
-    if (!/^mysql:\/\//i.test(u)) continue;
+    if (!/^mysql(2)?:\/\//i.test(u)) continue;
+    // Skip unresolved Railway template references like ${{VAR}}
+    if (/\$\{\{/.test(u)) continue;
+    // Skip obvious placeholder values from .env.example (real localhost URLs are valid)
     if (/your-password|your-railway-host/i.test(u)) continue;
     return u;
   }
@@ -36,37 +54,64 @@ function getMysqlUri(): string | undefined {
 
 function getPoolOptions(): mysql.PoolOptions {
   const uri = getMysqlUri();
-  if (uri && /^mysql:\/\//i.test(uri.trim())) {
+
+  if (uri) {
     return {
-      uri: uri.trim(),
+      uri,
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 15000,
+      connectTimeout: 20000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
-      ssl:
-        process.env.NODE_ENV === "production"
-          ? { rejectUnauthorized: false }
-          : undefined,
+      ssl: { rejectUnauthorized: false },
     };
   }
+
+  // Individual vars — Railway injects both MYSQLHOST and MYSQL_HOST forms
+  const host =
+    process.env.MYSQLHOST ||
+    process.env.MYSQL_HOST ||
+    process.env.RAILWAY_PRIVATE_DOMAIN ||
+    "localhost";
+
+  const port = parseInt(
+    process.env.MYSQLPORT ||
+    process.env.MYSQL_PORT ||
+    "3306",
+    10
+  );
+
+  const user =
+    process.env.MYSQLUSER ||
+    process.env.MYSQL_USER ||
+    "root";
+
+  const password =
+    process.env.MYSQLPASSWORD ||
+    process.env.MYSQL_PASSWORD ||
+    process.env.MYSQL_ROOT_PASSWORD ||
+    "";
+
+  // Railway default DB name is "railway" not "solaradvisor"
+  const database =
+    process.env.MYSQLDATABASE ||
+    process.env.MYSQL_DATABASE ||
+    "railway";
+
   return {
-    host: process.env.MYSQL_HOST || process.env.MYSQLHOST || "localhost",
-    port: parseInt(process.env.MYSQL_PORT || process.env.MYSQLPORT || "3306", 10),
-    database: process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || "solaradvisor",
-    user: process.env.MYSQL_USER || process.env.MYSQLUSER || "root",
-    password: process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || "",
+    host,
+    port,
+    user,
+    password,
+    database,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 15000,
+    connectTimeout: 20000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
-    ssl:
-      process.env.NODE_ENV === "production"
-        ? { rejectUnauthorized: false }
-        : undefined,
+    ssl: { rejectUnauthorized: false },
   };
 }
 

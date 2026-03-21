@@ -13,6 +13,7 @@ const SatelliteRoofDemo = dynamic(() => import("@/components/SatelliteRoofDemo")
 const ONLINE_ESTIMATES_COUNT = "3,372,403";
 const ONLINE_ESTIMATES_SINCE = 2008;
 
+// Reliable background images — no API key needed, always render
 const HERO_SKY =
   "https://images.unsplash.com/photo-1509391366360-2e959784a276?auto=format&fit=crop&w=2400&q=80";
 const STRIP_PANELS =
@@ -114,7 +115,7 @@ export default function HomePage() {
           priority
           sizes="100vw"
           className="hero-pro__bg"
-          style={{ objectPosition: "center 30%" }}
+          style={{ objectFit: "cover", objectPosition: "center 30%" }}
         />
         <div className="hero-pro__overlay" aria-hidden />
         <div className="hero-pro__inner" style={{ padding: "clamp(72px, 10vh, 120px) clamp(20px, 5vw, 48px)" }}>

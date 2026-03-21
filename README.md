@@ -51,9 +51,20 @@ Open http://localhost:3000
    - **Manual / troubleshooting:** `npm run db:migrate` (schema) or **`npm run db:setup`** = full `migrate.sql` + `migrate_seed_state_incentives.sql` in one shot. Or paste into Railway → MySQL → **Query**.  
    - **Existing database** missing address columns: run **`migrate_lead_address_utility.sql`** once so `POST /api/leads` does not 500 (“Unknown column”).
    - If **`state_incentives`** is empty, ZIP/region hints stay blank: **`npm run db:setup`** or paste **`migrate_seed_state_incentives.sql`** (idempotent `INSERT IGNORE`).
-5. Set remaining env vars from `.env.example` (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite). **`npm run start`** uses `scripts/start-standalone.cjs`, which forces **`HOSTNAME=0.0.0.0`** because Railway sets `HOSTNAME` to the container ID and Next would otherwise bind only there (healthchecks then fail). **`next.config.js`** sets **`images.unoptimized: true`** so standalone builds do not require the native **`sharp`** binary (keeps `npm ci` + Railway Nixpacks reliable).
-6. Seed admin: `node scripts/seed-admin.mjs admin@yourdomain.com "Password123!"`
-7. Railway auto-deploys on push to `main` (no separate “push to Railway” step if GitHub integration is connected)
+
+### Still no tables? (Railway or local)
+
+1. **Web service must see MySQL** — In Railway → **SolarAdvisor** (web) → **Variables**, confirm **`MYSQL_URL`** is set via **Reference** to the MySQL plugin (not a fake `DATABASE_URL` from `.env.example`). If there are **no** `MYSQL_*` variables, the deploy log will show `[start] ⚠️ No MySQL env vars` and **no migration runs**.
+2. **`SKIP_DB_MIGRATE`** — If set to **`1`**, background migrate is disabled. Remove it or set to **`0`**.
+3. **Run migrate once manually** (same env as production):
+   - **Railway CLI:** `railway run npm run migrate:now` (or `railway run node scripts/migrate-now.mjs`) from the repo root.
+   - **Railway dashboard:** open the **MySQL** service → **Query** → paste contents of **`migrate.sql`**, then **`migrate_seed_state_incentives.sql`** if you need ZIP hints.
+4. **Local:** Put **`MYSQL_URL=mysql://...`** (or `MYSQL_HOST` + user/password/database) in **`.env.local`**, then **`npm run migrate:now`** or **`npm run db:setup`**.
+5. **Check logs** after deploy for **`[start] ❌ Migration exited`** — fix connection (private URL, firewall) and redeploy or run step 3.
+
+6. Set remaining env vars from `.env.example` (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite). **`npm run start`** uses `scripts/start-standalone.cjs`, which forces **`HOSTNAME=0.0.0.0`** because Railway sets `HOSTNAME` to the container ID and Next would otherwise bind only there (healthchecks then fail). **`next.config.js`** sets **`images.unoptimized: true`** so standalone builds do not require the native **`sharp`** binary (keeps `npm ci` + Railway Nixpacks reliable).
+7. Seed admin: `node scripts/seed-admin.mjs admin@yourdomain.com "Password123!"`
+8. Railway auto-deploys on push to `main` (no separate “push to Railway” step if GitHub integration is connected)
 
 **Troubleshooting — `npm ci` / “Missing: sharp from lock file”:**  
 That error is from a **deploy that still had `sharp` in `package.json` without a matching `package-lock.json`**. Current `main` **does not** depend on `sharp` (see `images.unoptimized` in `next.config.js`). In Railway → **Deployments**, open the latest build and confirm the commit is **`b2d0c3e` or newer** (or **Redeploy** from the latest `main`). Old failed rows in the history will still show the old log.

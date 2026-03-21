@@ -12,6 +12,7 @@ import ManualAddressFields, { buildManualResolved } from "@/components/ManualAdd
 const SatelliteRoof = dynamic(() => import("@/components/SatelliteRoof"), { ssr: false });
 const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
 
+// Reliable background — no API key needed, always renders
 const FUNNEL_MAP_BG =
   "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=2400&q=82";
 
@@ -511,10 +512,10 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
           Do you own this property or have authority to install solar?
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <button type="button" onClick={() => { update("isHomeowner", true); setError(""); }} style={btn(data.isHomeowner === true)}>
+          <button type="button" onClick={() => { update("isHomeowner", true); setError(""); }} style={btn(data.isHomeowner !== null && Boolean(data.isHomeowner))}>
             Yes
           </button>
-          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(false)}>
+          <button type="button" onClick={() => { update("isHomeowner", false); setError(""); }} style={btn(data.isHomeowner !== null && !data.isHomeowner)}>
             No
           </button>
         </div>
@@ -589,7 +590,7 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
   );
 }
 
-function StepEstimate({ data, estimate, update, onNext, onBack }: { data: FormData; estimate: Estimate; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void }) {
+function StepEstimate({ data, estimate, update, onNext, onBack, submitting, submitError }: { data: FormData; estimate: Estimate; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void; submitting?: boolean; submitError?: string }) {
   const [activeTab, setActiveTab] = useState(data.preferredFinancing || "lease");
 
   return (
@@ -651,6 +652,7 @@ function StepEstimate({ data, estimate, update, onNext, onBack }: { data: FormDa
           systemKw={estimate.systemKw}
           lat={data.lat}
           lng={data.lng}
+          address={data.formattedAddress || undefined}
         />
       </div>
 
@@ -749,26 +751,41 @@ function StepEstimate({ data, estimate, update, onNext, onBack }: { data: FormDa
         ✋ This is a rough estimate. Your specialist will provide an exact quote.
       </p>
 
+      {submitError && (
+        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 16px", marginBottom: 16, color: "#DC2626", fontSize: "0.875rem" }}>
+          ⚠️ {submitError}
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 12 }}>
         <button onClick={onBack} style={{ flex: "0 0 auto", padding: "14px 24px", background: "var(--white)", border: "2px solid var(--border)", borderRadius: "999px", fontWeight: 600, cursor: "pointer", color: "var(--text-secondary)", fontSize: "0.95rem" }}>
           ← Back
         </button>
         <button
           onClick={onNext}
+          disabled={!!submitting}
           style={{
-            flex: 1, padding: "16px", background: "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
+            flex: 1, padding: "16px",
+            background: submitting ? "var(--border)" : "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
             color: "white", fontWeight: 700, fontSize: "1rem", borderRadius: "999px",
-            border: "none", cursor: "pointer", boxShadow: "0 4px 20px rgba(255,140,0,0.35)",
+            border: "none", cursor: submitting ? "not-allowed" : "pointer",
+            boxShadow: submitting ? "none" : "0 4px 20px rgba(255,140,0,0.35)",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >
-          Claim My Estimate →
+          {submitting ? (
+            <>
+              <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
+              Sending your report…
+            </>
+          ) : "Claim My Estimate →"}
         </button>
       </div>
     </div>
   );
 }
 
-function StepContact({ data, update, onNext, onBack, submitting, error }: {
+function StepContact({ data, update, onNext, onBack, submitting: _submitting, error: _error }: {
   data: FormData;
   update: (k: keyof FormData, v: string | boolean | number | null) => void;
   onNext: () => void;
@@ -800,10 +817,10 @@ function StepContact({ data, update, onNext, onBack, submitting, error }: {
       <div style={{ textAlign: "center", marginBottom: 28 }}>
         <div style={{ fontSize: 44, marginBottom: 10 }}>🎯</div>
         <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(1.5rem,4vw,2.2rem)", fontWeight: 900, color: "var(--earth-dark)", letterSpacing: "-0.02em", marginBottom: 6 }}>
-          Get Your Full Report
+          Where Should We Send Your Report?
         </h2>
         <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem" }}>
-          A solar expert will review your estimate and contact you with a full proposal.
+          Enter your details to unlock your personalized savings estimate and full solar report.
         </p>
       </div>
 
@@ -909,11 +926,7 @@ function StepContact({ data, update, onNext, onBack, submitting, error }: {
         {fieldErrors.consent && <p style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: 4 }}>{fieldErrors.consent}</p>}
       </div>
 
-      {error && (
-        <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "12px 16px", marginBottom: 16, color: "#DC2626", fontSize: "0.875rem" }}>
-          ⚠️ {error}
-        </div>
-      )}
+      {/* No server error here — errors show on the final Estimate step */}
 
       <div style={{ display: "flex", gap: 12 }}>
         <button onClick={onBack} style={{ flex: "0 0 auto", padding: "14px 24px", background: "var(--white)", border: "2px solid var(--border)", borderRadius: "999px", fontWeight: 600, cursor: "pointer", color: "var(--text-secondary)", fontSize: "0.95rem" }}>
@@ -921,21 +934,15 @@ function StepContact({ data, update, onNext, onBack, submitting, error }: {
         </button>
         <button
           onClick={handleNext}
-          disabled={submitting}
           style={{
-            flex: 1, padding: "16px", background: submitting ? "var(--border)" : "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
+            flex: 1, padding: "16px", background: "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
             color: "white", fontWeight: 700, fontSize: "1rem", borderRadius: "999px",
-            border: "none", cursor: submitting ? "not-allowed" : "pointer",
-            boxShadow: submitting ? "none" : "0 4px 20px rgba(255,140,0,0.35)",
+            border: "none", cursor: "pointer",
+            boxShadow: "0 4px 20px rgba(255,140,0,0.35)",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}
         >
-          {submitting ? (
-            <>
-              <span style={{ width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
-              Processing...
-            </>
-          ) : "Send My Free Report →"}
+          See My Solar Estimate →
         </button>
       </div>
 
@@ -1060,7 +1067,7 @@ export default function FunnelPage() {
         const msg =
           data.details?.fieldErrors
             ? Object.values(data.details.fieldErrors).flat().join(" ")
-            : data.error || data.detail || "Something went wrong. Please try again.";
+            : (data.detail ? `${data.error}: ${data.detail}` : data.error) || "Something went wrong. Please try again.";
         setSubmitError(typeof msg === "string" ? msg : "Something went wrong. Please try again.");
         return;
       }
@@ -1075,7 +1082,7 @@ export default function FunnelPage() {
 
   const progress = (step / TOTAL_STEPS) * 100;
 
-  const stepLabels = ["Location", "Property", "Estimate", "Contact"];
+  const stepLabels = ["Location", "Property", "Your Info", "Estimate"];
 
   /** Step 3 must never render an empty card if monthlyBill exists but estimate state hasn’t flushed yet. */
   const estimateForStep3 =
@@ -1091,7 +1098,7 @@ export default function FunnelPage() {
         sizes="100vw"
         style={{ objectFit: "cover" }}
       />
-      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.5)", pointerEvents: "none" }} aria-hidden />
+      <div style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,0.52)", pointerEvents: "none" }} aria-hidden />
 
       <div style={{ position: "relative", zIndex: 2 }}>
       {/* Top bar */}
@@ -1140,18 +1147,18 @@ export default function FunnelPage() {
         }}>
           {step === 1 && <StepAddressEnergy data={formData} update={update} onNext={goNext} />}
           {step === 2 && <StepProperty data={formData} update={update} onNext={goNext} onBack={goBack} />}
-          {step === 3 && estimateForStep3 && (
-            <StepEstimate data={formData} estimate={estimateForStep3} update={update} onNext={goNext} onBack={goBack} />
-          )}
-          {step === 4 && (
+          {step === 3 && (
             <StepContact
               data={formData}
               update={update}
-              onNext={handleSubmit}
+              onNext={goNext}
               onBack={goBack}
-              submitting={submitting}
-              error={submitError}
+              submitting={false}
+              error=""
             />
+          )}
+          {step === 4 && estimateForStep3 && (
+            <StepEstimate data={formData} estimate={estimateForStep3} update={update} onNext={handleSubmit} onBack={goBack} submitting={submitting} submitError={submitError} />
           )}
         </div>
 

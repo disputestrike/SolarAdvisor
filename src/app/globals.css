@@ -1,5 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
-
+/* Fonts loaded via next/font in layout.tsx — no @import needed */
 :root {
   --sun-core: #FF8C00;
   --sun-flare: #FFA500;
@@ -21,10 +20,10 @@
   --border: #F0E4CC;
   --shadow-warm: 0 4px 24px rgba(255,140,0,0.15);
   --shadow-deep: 0 20px 60px rgba(26,16,5,0.12);
-  --font-display: 'Playfair Display', Georgia, serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   /* Primary UI / nav / hero — neutral sans reads more “utility / finance” than display serif */
-  --font-brand: 'Source Sans 3', 'DM Sans', system-ui, sans-serif;
+  --font-brand: 'Source Sans 3', 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --corp-navy: #0f172a;
   --corp-blue: #1d4ed8;
   --corp-muted: #64748b;

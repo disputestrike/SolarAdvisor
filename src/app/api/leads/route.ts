@@ -7,6 +7,46 @@ import { notifyLeadReceived } from "@/lib/notifications";
 import { sendLeadWebhook } from "@/lib/webhook";
 import { formatPhone } from "@/lib/auth";
 import type { Lead } from "@/db/schema";
+import fs from "fs";
+import path from "path";
+
+// ─── Ensure tables exist before every lead insert ────────────────────────────
+// This is the safety net: if migration didn't run at startup, run it now.
+let _migrated = false;
+async function ensureTables() {
+  if (_migrated) return;
+  try {
+    // Quick check: does the leads table exist?
+    await qExec("SELECT 1 FROM leads LIMIT 1", []);
+    _migrated = true;
+  } catch {
+    // Table missing — run migration now
+    try {
+      console.log("[leads API] Tables missing — running migration inline...");
+      const sqlPath = path.join(process.cwd(), "migrate.sql");
+      const sql = fs.readFileSync(sqlPath, "utf8");
+      const { getPool } = await import("@/db");
+      const conn = await getPool().getConnection();
+      try {
+        // mysql2 pool doesn't support multipleStatements — split and run each
+        const statements = sql
+          .split(";")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && !s.startsWith("--") && !s.startsWith("/*"));
+        for (const stmt of statements) {
+          await conn.execute(stmt).catch(() => { /* ignore individual errors e.g. duplicate column */ });
+        }
+        console.log("[leads API] ✅ Inline migration complete.");
+        _migrated = true;
+      } finally {
+        conn.release();
+      }
+    } catch (migErr) {
+      console.error("[leads API] ❌ Inline migration failed:", migErr);
+      // Don't throw — let the original INSERT fail with a real error
+    }
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +57,10 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data;
 
-    // Location → state incentives (prefer address from Places; fallback ZIP cache)
+    // Ensure DB tables exist (auto-migrates if needed)
+    await ensureTables();
+
+    // Location → state incentives
     let city: string | undefined = data.city ?? undefined;
     let state: string | undefined = data.state ?? undefined;
     let avgSunHours = 5.0;
@@ -29,12 +72,8 @@ export async function POST(req: NextRequest) {
           "SELECT city, state FROM zip_cache WHERE zip_code = ? LIMIT 1",
           [data.zipCode]
         );
-        if (zipRow) {
-          city = city ?? zipRow.city;
-          state = state ?? zipRow.state;
-        }
+        if (zipRow) { city = city ?? zipRow.city; state = state ?? zipRow.state; }
       }
-
       if (state) {
         const inc = await q1<{ avg_sun_hours: string; avg_electricity_cost: string }>(
           "SELECT avg_sun_hours, avg_electricity_cost FROM state_incentives WHERE state = ? LIMIT 1",
@@ -60,13 +99,10 @@ export async function POST(req: NextRequest) {
 
     const ipAddress =
       req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
-      req.headers.get("x-real-ip") ||
-      "unknown";
+      req.headers.get("x-real-ip") || "unknown";
     const userAgent = req.headers.get("user-agent") || "";
-
     const phoneE164 = formatPhone(data.phone);
 
-    // Insert lead (run migrate_lead_address_utility.sql on MySQL if these columns are missing)
     const { insertId: leadId } = await qExec(
       `INSERT INTO leads (
         first_name, last_name, email, phone, contact_preference,
@@ -79,75 +115,51 @@ export async function POST(req: NextRequest) {
         score, tier, status,
         utm_source, utm_medium, utm_campaign,
         ip_address, user_agent, referrer,
-        consent_given, consent_text,
-        webhook_sent
+        consent_given, consent_text, webhook_sent
       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        data.firstName,
-        data.lastName,
-        data.email,
-        phoneE164,
-        data.contactPreference,
-        data.zipCode,
-        data.streetAddress ?? null,
-        data.formattedAddress,
-        data.latitude ?? null,
-        data.longitude ?? null,
-        data.placeId,
-        data.utilityProvider,
-        data.buildingType ?? null,
-        data.stories ?? null,
-        city ?? null,
-        state ?? null,
-        data.isHomeowner ? 1 : 0,
-        data.monthlyBill,
-        data.roofType ?? null,
-        data.roofSlope ?? null,
-        data.shadingLevel ?? null,
+        data.firstName, data.lastName, data.email, phoneE164, data.contactPreference,
+        data.zipCode, data.streetAddress ?? null, data.formattedAddress,
+        data.latitude ?? null, data.longitude ?? null, data.placeId,
+        data.utilityProvider, data.buildingType ?? null, data.stories ?? null,
+        city ?? null, state ?? null,
+        data.isHomeowner ? 1 : 0, data.monthlyBill,
+        data.roofType ?? null, data.roofSlope ?? null, data.shadingLevel ?? null,
         (data.isDecisionMaker ?? true) ? 1 : 0,
-        estimate.systemKw,
-        estimate.panels,
-        estimate.monthlySavings,
-        estimate.annualSavings,
-        estimate.roiYears,
+        estimate.systemKw, estimate.panels, estimate.monthlySavings,
+        estimate.annualSavings, estimate.roiYears,
         data.preferredFinancing ?? "undecided",
-        finalScore.score,
-        finalScore.tier,
-        "new",
-        data.utmSource ?? null,
-        data.utmMedium ?? null,
-        data.utmCampaign ?? null,
-        ipAddress,
-        userAgent,
-        req.headers.get("referer") ?? "",
+        finalScore.score, finalScore.tier, "new",
+        data.utmSource ?? null, data.utmMedium ?? null, data.utmCampaign ?? null,
+        ipAddress, userAgent, req.headers.get("referer") ?? "",
         data.consentGiven ? 1 : 0,
         "I consent to be contacted by SolarAdvisor about my solar estimate.",
         0,
       ]
     );
 
-    // Log activity
-    await db.insert(leadActivity).values({
+    // Log activity (non-blocking — don't fail the lead if this errors)
+    db.insert(leadActivity).values({
       leadId,
       type: "created",
       description: `Lead created. Score: ${finalScore.score}/100, Tier: ${finalScore.tier}`,
       metadata: JSON.stringify({ scoreBreakdown: finalScore.breakdown }),
-    });
+    }).catch(console.error);
 
-    // Schedule drip
+    // Schedule drip (non-blocking)
     const dripSchedule = getDripSchedule(finalScore.tier);
     if (dripSchedule.length > 0) {
-      await db.insert(dripMessages).values(
+      db.insert(dripMessages).values(
         dripSchedule.map((item) => ({
           leadId,
           channel: item.channel as "sms" | "email",
           sequenceStep: item.step,
           scheduledAt: new Date(Date.now() + item.delayHours * 3600000),
         }))
-      );
+      ).catch(console.error);
     }
 
-    // Async: notify + webhook (don't block response)
+    // Notify + webhook (fully async, never blocks response)
     q1<Lead>("SELECT * FROM leads WHERE id = ? LIMIT 1", [leadId])
       .then((fullLead) => {
         if (!fullLead) return;
@@ -160,40 +172,19 @@ export async function POST(req: NextRequest) {
                 "UPDATE leads SET webhook_sent=1, webhook_sent_at=NOW(), webhook_response=? WHERE id=?",
                 [wr.response ?? "", leadId]
               );
-              await db.insert(leadActivity).values({
-                leadId,
-                type: "webhook_sent",
-                description: "Webhook delivered to partner",
-              });
             }
           }),
         ]);
       })
       .catch(console.error);
 
-    return NextResponse.json({
-      success: true,
-      leadId,
-      tier: finalScore.tier,
-      score: finalScore.score,
-      estimate,
-    });
+    return NextResponse.json({ success: true, leadId, tier: finalScore.tier, score: finalScore.score, estimate });
+
   } catch (err) {
     console.error("[Lead API]", err);
     const detail = err instanceof Error ? err.message : String(err);
-    if (detail.includes("Unknown column") && process.env.NODE_ENV !== "production") {
-      return NextResponse.json(
-        {
-          error: "Database missing new columns. Run migrate_lead_address_utility.sql on MySQL.",
-          detail,
-        },
-        { status: 500 }
-      );
-    }
-    return NextResponse.json(
-      { error: "Internal server error", detail: process.env.NODE_ENV === "development" ? detail : undefined },
-      { status: 500 }
-    );
+    // Always return the real error message so we can debug from the UI
+    return NextResponse.json({ error: "Internal server error", detail }, { status: 500 });
   }
 }
 

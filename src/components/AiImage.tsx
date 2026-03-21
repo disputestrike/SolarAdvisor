@@ -53,7 +53,8 @@ export default function AiImage({
   priority = false,
 }: AiImageProps) {
   const [src, setSrc] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Start as false — show fallback immediately, only shimmer while actively fetching
+  const [loading, setLoading] = useState(false);
 
   const fetchImage = useCallback(async () => {
     setLoading(true);

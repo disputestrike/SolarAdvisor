@@ -280,17 +280,27 @@ describe("GET /api/health", () => {
   });
 });
 
-// ─── /api/health/ready (readiness — DB ping) ───────────────────────────────────
+// ─── /api/health/ready (readiness — DB ping + table check) ───────────────────
 describe("GET /api/health/ready", () => {
-  test("returns 200 when DB is healthy", async () => {
+  test("returns 200 when DB is healthy and tables exist", async () => {
     const { checkDbConnection } = await import("@/db");
     (checkDbConnection as jest.Mock).mockResolvedValue(true);
+    // Mock q() to return all required tables
+    mockQ.mockResolvedValue([
+      { TABLE_NAME: "leads" },
+      { TABLE_NAME: "lead_activity" },
+      { TABLE_NAME: "drip_messages" },
+      { TABLE_NAME: "admin_users" },
+      { TABLE_NAME: "state_incentives" },
+      { TABLE_NAME: "zip_cache" },
+    ]);
     const { GET } = await import("@/app/api/health/ready/route");
     const res = await GET();
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.status).toBe("ready");
-    expect(data.database).toBe("ok");
+    expect(data.database).toBe("connected");
+    expect(data.tables.ready).toBe(true);
   });
 
   test("returns 503 when DB is down", async () => {
@@ -300,8 +310,21 @@ describe("GET /api/health/ready", () => {
     const res = await GET();
     expect(res.status).toBe(503);
     const data = await res.json();
-    expect(data.status).toBe("not_ready");
+    expect(data.status).toBe("db_unreachable");
     expect(data.database).toBe("error");
+  });
+
+  test("returns 503 when DB up but tables missing", async () => {
+    const { checkDbConnection } = await import("@/db");
+    (checkDbConnection as jest.Mock).mockResolvedValue(true);
+    // Only some tables exist — migration incomplete
+    mockQ.mockResolvedValue([{ TABLE_NAME: "leads" }]);
+    const { GET } = await import("@/app/api/health/ready/route");
+    const res = await GET();
+    expect(res.status).toBe(503);
+    const data = await res.json();
+    expect(data.status).toBe("db_connected_tables_missing");
+    expect(data.tables.ready).toBe(false);
   });
 });
 

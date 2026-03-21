@@ -13,11 +13,15 @@
     "test:load": "node tests/load-chaos.mjs",
     "migrate": "node -e \"require(\"dotenv\").config({path:\".env.local\"}); const {execSync}=require(\"child_process\"); execSync(\"mysql -h $MYSQL_HOST -P ${MYSQL_PORT:-3306} -u $MYSQL_USER -p$MYSQL_PASSWORD $MYSQL_DATABASE < migrate.sql\", {stdio:\"inherit\"})\"",
     "db:migrate": "node scripts/apply-migrate.mjs",
+    "migrate:now": "node scripts/migrate-now.mjs",
     "db:setup": "node scripts/db-setup.mjs",
     "db:seed": "node scripts/seed-admin.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/dm-sans": "^5.2.8",
+    "@fontsource/playfair-display": "^5.2.8",
+    "@fontsource/source-sans-3": "^5.2.9",
     "@hookform/resolvers": "^5.2.2",
     "@tanstack/react-query": "^5.91.2",
     "axios": "^1.13.6",
