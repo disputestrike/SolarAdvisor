@@ -1,21 +1,23 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function HeroZipCTA() {
-  const router = useRouter();
   const [zip, setZip] = useState("");
   const [hint, setHint] = useState("");
 
+  /** Full page navigation — reliable if client router fails after runtime errors. */
   const go = () => {
     const z = zip.replace(/\D/g, "").slice(0, 5);
     if (z.length === 5) {
       setHint("");
-      router.push(`/funnel?zip=${z}`);
-    } else {
+    } else if (z.length > 0) {
       setHint("Enter a 5-digit ZIP to prefill your estimate.");
-      router.push("/funnel");
+    } else {
+      setHint("");
+    }
+    if (typeof window !== "undefined") {
+      window.location.assign(z.length === 5 ? `/funnel?zip=${z}` : "/funnel");
     }
   };
 

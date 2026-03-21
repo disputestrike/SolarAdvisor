@@ -18,25 +18,48 @@ function toSqlParams(
 
 let _pool: mysql.Pool | null = null;
 
-export function getPool(): mysql.Pool {
-  if (!_pool) {
-    _pool = mysql.createPool({
-      host: process.env.MYSQL_HOST || "localhost",
-      port: parseInt(process.env.MYSQL_PORT || "3306"),
-      database: process.env.MYSQL_DATABASE || "solaradvisor",
-      user: process.env.MYSQL_USER || "root",
-      password: process.env.MYSQL_PASSWORD || "",
+function getPoolOptions(): mysql.PoolOptions {
+  const uri =
+    process.env.DATABASE_URL ||
+    process.env.MYSQL_URL ||
+    process.env.MYSQLPRIVATE_URL;
+  if (uri && /^mysql:\/\//i.test(uri.trim())) {
+    return {
+      uri: uri.trim(),
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 4000,
+      connectTimeout: 15000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
       ssl:
         process.env.NODE_ENV === "production"
           ? { rejectUnauthorized: false }
           : undefined,
-    });
+    };
+  }
+  return {
+    host: process.env.MYSQL_HOST || process.env.MYSQLHOST || "localhost",
+    port: parseInt(process.env.MYSQL_PORT || process.env.MYSQLPORT || "3306", 10),
+    database: process.env.MYSQL_DATABASE || process.env.MYSQLDATABASE || "solaradvisor",
+    user: process.env.MYSQL_USER || process.env.MYSQLUSER || "root",
+    password: process.env.MYSQL_PASSWORD || process.env.MYSQLPASSWORD || "",
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    connectTimeout: 15000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    ssl:
+      process.env.NODE_ENV === "production"
+        ? { rejectUnauthorized: false }
+        : undefined,
+  };
+}
+
+export function getPool(): mysql.Pool {
+  if (!_pool) {
+    _pool = mysql.createPool(getPoolOptions());
   }
   return _pool;
 }

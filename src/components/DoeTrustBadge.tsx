@@ -18,6 +18,7 @@ export default function DoeTrustBadge() {
         width={280}
         height={111}
         priority
+        unoptimized
         style={{ width: "176px", height: "auto", display: "block" }}
       />
     </a>
