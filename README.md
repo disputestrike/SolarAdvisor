@@ -47,7 +47,7 @@ Open http://localhost:3000
    - On each deploy, **`scripts/start-standalone.cjs` runs `migrate.sql` automatically** when any DB env var is present (unless `SKIP_DB_MIGRATE=1`). Uses `CREATE TABLE IF NOT EXISTS`, so it is safe to repeat.  
    - **Manual / troubleshooting:** `npm run db:migrate` or paste `migrate.sql` into Railway → MySQL → **Query**.  
    - **Existing database** missing address columns: run **`migrate_lead_address_utility.sql`** once so `POST /api/leads` does not 500 (“Unknown column”).
-5. Set remaining env vars from `.env.example` (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite). **`npm run start`** uses `scripts/start-standalone.cjs`, which forces **`HOSTNAME=0.0.0.0`** because Railway sets `HOSTNAME` to the container ID and Next would otherwise bind only there (healthchecks then fail). **`sharp`** is included so Next.js Image optimization works in **standalone** production builds.
+5. Set remaining env vars from `.env.example` (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite). **`npm run start`** uses `scripts/start-standalone.cjs`, which forces **`HOSTNAME=0.0.0.0`** because Railway sets `HOSTNAME` to the container ID and Next would otherwise bind only there (healthchecks then fail). **`next.config.js`** sets **`images.unoptimized: true`** so standalone builds do not require the native **`sharp`** binary (keeps `npm ci` + Railway Nixpacks reliable).
 6. Seed admin: `node scripts/seed-admin.mjs admin@yourdomain.com "Password123!"`
 7. Railway auto-deploys on push to `main` (no separate “push to Railway” step if GitHub integration is connected)
 
