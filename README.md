@@ -42,7 +42,7 @@ Open http://localhost:3000
 
 1. New Project → Add MySQL plugin
 2. New Service → Deploy from GitHub → `disputestrike/SolarAdvisor`
-3. Set all env vars from `.env.example` in Railway dashboard (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite). Set **`HOSTNAME=0.0.0.0`** so the standalone server listens on all interfaces and `/api/health` passes Railway’s check.
+3. Set all env vars from `.env.example` in Railway dashboard (including `NEXT_PUBLIC_GOOGLE_MAPS_KEY` for Places + satellite). **`npm run start`** uses `scripts/start-standalone.cjs`, which forces **`HOSTNAME=0.0.0.0`** because Railway sets `HOSTNAME` to the container ID and Next would otherwise bind only there (healthchecks then fail).
 4. **Database migrations (MySQL)**  
    - **Brand-new database:** run `migrate.sql` once (full schema).  
    - **Existing database** that was created before address/utility fields: run **`migrate_lead_address_utility.sql`** once so `leads` has `street_address`, `formatted_address`, `latitude`, `longitude`, `place_id`, `utility_provider`, `building_type`, `stories`. Without this, `POST /api/leads` can return 500 (“Unknown column”).  
