@@ -8,6 +8,7 @@ interface SatelliteRoofProps {
   systemKw?: number;
   lat?: number | null;
   lng?: number | null;
+  address?: string;
   onRoofData?: (data: RoofData) => void;
 }
 
@@ -42,6 +43,7 @@ export default function SatelliteRoof({
   systemKw,
   lat,
   lng,
+  address,
   onRoofData,
 }: SatelliteRoofProps) {
   const [data, setData] = useState<RoofData | null>(null);
@@ -64,6 +66,10 @@ export default function SatelliteRoof({
       q.set("lat", String(lat));
       q.set("lng", String(lng));
     }
+    // Pass full address for more accurate Solar API building lookup
+    if (address && address.length > 5) {
+      q.set("address", address);
+    }
 
     fetch(`/api/satellite?${q.toString()}`)
       .then((r) => r.json())
@@ -75,7 +81,7 @@ export default function SatelliteRoof({
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [zipCode, panels, lat, lng, notifyRoof]);
+  }, [zipCode, panels, lat, lng, address, notifyRoof]);
 
   const hasSatellite = !imgError && !!data?.satellite?.imageUrl;
   const panelCount = data?.overlay?.panelCount ?? data?.roof?.panelsSuggested ?? panels;

@@ -87,6 +87,36 @@ function ThankYouContent() {
           ))}
         </div>
 
+        {/* Schedule CTA */}
+        <div style={{
+          background: "linear-gradient(135deg, var(--earth-dark), #2D1F0A)",
+          border: "1px solid rgba(255,215,0,0.2)",
+          borderRadius: 16, padding: "24px", marginBottom: 20,
+          textAlign: "center",
+        }}>
+          <div style={{ fontSize: 28, marginBottom: 10 }}>📅</div>
+          <div style={{ fontWeight: 700, color: "var(--white)", fontSize: "1.05rem", marginBottom: 6 }}>
+            Skip the wait — book directly
+          </div>
+          <p style={{ color: "rgba(255,255,255,0.65)", fontSize: "0.875rem", marginBottom: 16, lineHeight: 1.5 }}>
+            Schedule a free 15-minute call with a solar specialist at a time that works for you.
+          </p>
+          <a
+            href={process.env.NEXT_PUBLIC_GCAL_BOOKING_URL || "https://calendar.google.com/calendar/appointments"}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-block",
+              background: "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
+              color: "white", fontWeight: 700, fontSize: "0.95rem",
+              padding: "13px 30px", borderRadius: "999px", textDecoration: "none",
+              boxShadow: "0 4px 16px rgba(255,140,0,0.4)",
+            }}
+          >
+            📅 Book Free Consultation on Google Calendar
+          </a>
+        </div>
+
         {/* Referral CTA */}
         <div style={{
           background: "var(--white)", border: "1px solid var(--border)",
