@@ -17,94 +17,21 @@ function toSqlParams(
 let _pool: mysql.Pool | null = null;
 
 /**
- * Resolve MySQL connection from Railway env vars.
+ * Build connection config from Railway MySQL plugin vars.
  *
- * Railway MySQL plugin injects ALL of these — we try each in priority order:
- *   MYSQL_URL              mysql://root:pass@private-domain:3306/railway
- *   MYSQLPRIVATE_URL       alias
- *   MYSQL_PUBLIC_URL       public TCP proxy URL (fallback)
- *   DATABASE_URL           only if it looks like a real mysql:// URL
+ * Railway injects these automatically when MySQL is linked to the service:
+ *   MYSQL_URL              mysql://root:PASS@private-host:3306/railway
+ *   MYSQLHOST              private hostname
+ *   MYSQLPASSWORD          root password
+ *   MYSQLDATABASE          railway (default DB name)
+ *   MYSQL_ROOT_PASSWORD    same as MYSQLPASSWORD
+ *   MYSQL_PUBLIC_URL       public TCP proxy URL
  *
- * Individual var fallback (Railway also injects these):
- *   MYSQLHOST / MYSQL_HOST / RAILWAY_PRIVATE_DOMAIN
- *   MYSQLPORT / MYSQL_PORT
- *   MYSQLUSER / MYSQL_USER
- *   MYSQLPASSWORD / MYSQL_PASSWORD / MYSQL_ROOT_PASSWORD
- *   MYSQLDATABASE / MYSQL_DATABASE  (Railway default: "railway")
+ * Strategy: prefer individual vars (MYSQLHOST etc.) since they are always
+ * injected correctly by Railway's link mechanism. Fall back to URL parsing.
  */
-function getMysqlUri(): string | undefined {
-  const candidates = [
-    process.env.MYSQL_URL,
-    process.env.MYSQLPRIVATE_URL,
-    process.env.MYSQL_PUBLIC_URL,
-    process.env.DATABASE_URL,
-  ].filter(Boolean) as string[];
-
-  for (const raw of candidates) {
-    const u = raw.trim();
-    if (!/^mysql(2)?:\/\//i.test(u)) continue;
-    // Skip unresolved Railway template references like ${{VAR}}
-    if (/\$\{\{/.test(u)) continue;
-    // Skip obvious placeholder values from .env.example (real localhost URLs are valid)
-    if (/your-password|your-railway-host/i.test(u)) continue;
-    return u;
-  }
-  return undefined;
-}
-
 function getPoolOptions(): mysql.PoolOptions {
-  const uri = getMysqlUri();
-
-  if (uri) {
-    return {
-      uri,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      connectTimeout: 20000,
-      enableKeepAlive: true,
-      keepAliveInitialDelay: 0,
-      ssl: { rejectUnauthorized: false },
-    };
-  }
-
-  // Individual vars — Railway injects both MYSQLHOST and MYSQL_HOST forms
-  const host =
-    process.env.MYSQLHOST ||
-    process.env.MYSQL_HOST ||
-    process.env.RAILWAY_PRIVATE_DOMAIN ||
-    "localhost";
-
-  const port = parseInt(
-    process.env.MYSQLPORT ||
-    process.env.MYSQL_PORT ||
-    "3306",
-    10
-  );
-
-  const user =
-    process.env.MYSQLUSER ||
-    process.env.MYSQL_USER ||
-    "root";
-
-  const password =
-    process.env.MYSQLPASSWORD ||
-    process.env.MYSQL_PASSWORD ||
-    process.env.MYSQL_ROOT_PASSWORD ||
-    "";
-
-  // Railway default DB name is "railway" not "solaradvisor"
-  const database =
-    process.env.MYSQLDATABASE ||
-    process.env.MYSQL_DATABASE ||
-    "railway";
-
-  return {
-    host,
-    port,
-    user,
-    password,
-    database,
+  const base = {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
@@ -113,6 +40,57 @@ function getPoolOptions(): mysql.PoolOptions {
     keepAliveInitialDelay: 0,
     ssl: { rejectUnauthorized: false },
   };
+
+  // ── Priority 1: individual Railway-injected vars (most reliable) ──────────
+  const host =
+    process.env.MYSQLHOST ||
+    process.env.RAILWAY_PRIVATE_DOMAIN ||
+    process.env.MYSQL_HOST ||
+    "";
+
+  const port = parseInt(
+    process.env.MYSQLPORT || process.env.MYSQL_PORT || "3306", 10
+  );
+
+  const user =
+    process.env.MYSQLUSER || process.env.MYSQL_USER || "root";
+
+  const password =
+    process.env.MYSQLPASSWORD ||
+    process.env.MYSQL_ROOT_PASSWORD ||
+    process.env.MYSQL_PASSWORD ||
+    "";
+
+  const database =
+    process.env.MYSQLDATABASE ||
+    process.env.MYSQL_DATABASE ||
+    "railway";
+
+  // If we have a real host (not empty, not a placeholder), use individual vars
+  if (host && !/your-railway-host|localhost/.test(host)) {
+    console.log(`[db] Connecting via individual vars: ${user}@${host}:${port}/${database}`);
+    return { ...base, host, port, user, password, database };
+  }
+
+  // ── Priority 2: connection URL ─────────────────────────────────────────────
+  const urlCandidates = [
+    process.env.MYSQL_URL,
+    process.env.MYSQLPRIVATE_URL,
+    process.env.MYSQL_PUBLIC_URL,
+  ].filter(Boolean) as string[];
+
+  for (const raw of urlCandidates) {
+    const u = raw.trim();
+    if (!/^mysql(2)?:\/\//i.test(u)) continue;
+    if (/\$\{\{/.test(u)) continue;         // unresolved Railway template
+    if (/your-password|your-railway-host/i.test(u)) continue; // placeholder
+    console.log(`[db] Connecting via URL: ${u.replace(/:([^:@]+)@/, ":***@")}`);
+    return { ...base, uri: u };
+  }
+
+  // ── Fallback: localhost for local dev ──────────────────────────────────────
+  console.warn("[db] No Railway vars found — using localhost. Set MYSQLHOST on Railway.");
+  return { ...base, host: "localhost", port: 3306, user: "root", password, database };
 }
 
 export function getPool(): mysql.Pool {
