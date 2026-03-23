@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { q1, qExec } from "@/db";
 import { computeLayout, layoutToSVG, scoreFace, type RoofSegment } from "@/lib/solar-layout";
+import { estimateSolar } from "@/lib/scoring";
 
 // ─── Geocode ──────────────────────────────────────────────────────────────────
 async function geocode(query: string, key: string): Promise<{ lat: number; lng: number } | null> {
@@ -86,11 +87,13 @@ function syntheticSegments(lat: number, lng: number, roofAreaM2: number, zip: st
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const zip      = req.nextUrl.searchParams.get("zip") || "";
-  const address  = req.nextUrl.searchParams.get("address") || "";
-  const latParam = req.nextUrl.searchParams.get("lat");
-  const lngParam = req.nextUrl.searchParams.get("lng");
-  const reqPanels = parseInt(req.nextUrl.searchParams.get("panels") || "0");
+  const zip        = req.nextUrl.searchParams.get("zip") || "";
+  const address    = req.nextUrl.searchParams.get("address") || "";
+  const latParam   = req.nextUrl.searchParams.get("lat");
+  const lngParam   = req.nextUrl.searchParams.get("lng");
+  const reqPanels  = parseInt(req.nextUrl.searchParams.get("panels") || "0");
+  const monthlyBill = parseFloat(req.nextUrl.searchParams.get("bill") || "0");
+  const kwhCost    = parseFloat(req.nextUrl.searchParams.get("kwhCost") || "0.17");
   const zoom = 20, imgW = 640, imgH = 480;
   const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 
@@ -184,6 +187,12 @@ export async function GET(req: NextRequest) {
     ? Math.max(...segments.map(s => scoreFace(s.azimuthDegrees, s.pitchDegrees, s.shadingFactor ?? 1.0, annualSunHours)))
     : 0.75;
 
+  // ── Recalculate everything from actual placed panels (CLOSED LOOP) ─────────
+  // Layout engine is source of truth — financial model derives from placed panels
+  const reconciledEstimate = monthlyBill > 0
+    ? estimateSolar(monthlyBill, "", annualSunHours / 365, kwhCost, layout.panelCount)
+    : null;
+
   return NextResponse.json({
     success: true, zip, city, state, lat, lng, hasGoogleKey: !!key,
     satellite: { imageUrl: satelliteUrl, zoom },
@@ -205,6 +214,9 @@ export async function GET(req: NextRequest) {
       efficiencyScore: layout.efficiencyScore,
       breakdown: layout.breakdown,
     },
+    // Reconciled financial estimate — derived from actual placed panels
+    // Use this instead of the pre-satellite estimate in the funnel
+    reconciledEstimate,
     solarApiData: solarData ? {
       imageryDate: (solarData as Record<string, unknown>).imageryDate,
       roofSegments: segments.length,

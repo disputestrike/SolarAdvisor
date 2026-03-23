@@ -73,9 +73,10 @@ describe("scoreLead()", () => {
     expect(r.breakdown.decision_maker).toBe(15);
   });
 
-  test("non-decision-maker scores 0", () => {
+  test("non-decision-maker gets no decision_maker points", () => {
     const r = scoreLead({ isHomeowner: true, monthlyBill: 200, isDecisionMaker: false });
-    expect(r.breakdown.decision_maker).toBe(0);
+    // decision_maker not added to breakdown when false (0 points, not tracked)
+    expect(r.breakdown.decision_maker ?? 0).toBe(0);
   });
 
   // ─── State incentives ────────────────────────────────────────────────────
@@ -208,9 +209,9 @@ describe("estimateSolar()", () => {
     expect(e.monthlyLoanPayment).toBeGreaterThan(0);
   });
 
-  test("lease payment is 85% of monthly savings", () => {
+  test("lease payment is 75% of monthly savings (customer keeps 25% day-one)", () => {
     const e = estimateSolar(200);
-    expect(e.monthlyLeasePayment).toBe(Math.round(e.monthlySavings * 0.85));
+    expect(e.monthlyLeasePayment).toBe(Math.round(e.monthlySavings * 0.75));
   });
 
   test("lease payment is less than current bill", () => {
@@ -228,5 +229,74 @@ describe("estimateSolar()", () => {
     const highSun = estimateSolar(200, "AZ", 6.5, 0.13);
     const lowSun = estimateSolar(200, "WA", 3.5, 0.13);
     expect(highSun.systemKw).toBeLessThanOrEqual(lowSun.systemKw);
+  });
+});
+
+// ─── Closed-loop reconciliation ───────────────────────────────────────────────
+describe("estimateSolar() closed-loop — actualPanels as source of truth", () => {
+  test("systemKw always equals actualPanels × 400W / 1000", () => {
+    for (const panels of [8, 12, 16, 20, 24, 32]) {
+      const e = estimateSolar(300, "TX", 5.0, 0.17, panels);
+      expect(e.systemKw).toBe(Math.round((panels * 400) / 1000 * 10) / 10);
+      expect(e.panels).toBe(panels);
+    }
+  });
+
+  test("annualKwh derived from actualPanels system size", () => {
+    const e = estimateSolar(300, "TX", 5.0, 0.17, 16);
+    const expectedKw = Math.round((16 * 400) / 1000 * 10) / 10;
+    const expectedKwh = Math.round(expectedKw * 5.0 * 365 * 0.80);
+    expect(e.annualKwh).toBe(expectedKwh);
+  });
+
+  test("offsetPercent is ≤ 100", () => {
+    // Even a huge system should not exceed 100% offset
+    const e = estimateSolar(100, "TX", 5.0, 0.17, 32);
+    expect(e.offsetPercent).toBeLessThanOrEqual(100);
+    expect(e.offsetPercent).toBeGreaterThan(0);
+  });
+
+  test("isRoofLimited true when actualPanels < required", () => {
+    // $500/mo bill needs a big system; 8 panels is definitely roof-limited
+    const e = estimateSolar(500, "TX", 5.0, 0.17, 8);
+    expect(e.isRoofLimited).toBe(true);
+  });
+
+  test("isRoofLimited false when actualPanels meets or exceeds required", () => {
+    // $100/mo bill needs ~5-6 panels; 20 panels is not roof-limited
+    const e = estimateSolar(100, "TX", 5.0, 0.17, 20);
+    expect(e.isRoofLimited).toBe(false);
+  });
+
+  test("monthlySavings never exceeds monthly bill", () => {
+    for (const [bill, panels] of [[200, 8], [300, 12], [500, 20]]) {
+      const e = estimateSolar(bill, "TX", 5.0, 0.17, panels);
+      expect(e.monthlySavings).toBeLessThanOrEqual(bill);
+    }
+  });
+
+  test("installCost derived from actual systemKw not required systemKw", () => {
+    const e8  = estimateSolar(500, "TX", 5.0, 0.17, 8);
+    const e20 = estimateSolar(500, "TX", 5.0, 0.17, 20);
+    // More panels = higher cost
+    expect(e20.installCost).toBeGreaterThan(e8.installCost);
+    // Cost should match systemKw × $3000/kW
+    expect(e8.installCost).toBe(Math.round(e8.systemKw * 1000 * 3.00));
+  });
+
+  test("without actualPanels: panels capped at 32", () => {
+    // Very high bill that would require 60+ panels
+    const e = estimateSolar(1000);
+    expect(e.panels).toBeLessThanOrEqual(32);
+  });
+
+  test("annualSavings = monthlySavings × 12", () => {
+    const e = estimateSolar(300, "TX", 5.0, 0.17, 15);
+    expect(e.annualSavings).toBe(e.monthlySavings * 12);
+  });
+
+  test("netCost = installCost × 0.70 (30% ITC applied)", () => {
+    const e = estimateSolar(300, "TX", 5.0, 0.17, 15);
+    expect(e.netCost).toBe(Math.round(e.installCost * 0.70));
   });
 });

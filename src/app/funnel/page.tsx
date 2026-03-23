@@ -63,6 +63,10 @@ interface Estimate {
   netCost: number;
   monthlyLoanPayment: number;
   monthlyLeasePayment: number;
+  // Closed-loop fields (set when satellite data arrives)
+  offsetPercent?: number;
+  annualKwh?: number;
+  isRoofLimited?: boolean;
 }
 
 interface ZipInfo {
@@ -151,21 +155,60 @@ function formatPhone(val: string): string {
 }
 
 function quickEstimate(bill: number): Estimate {
-  const avgKwhCost = 0.13;
-  const avgSunHours = 5.0;
-  const monthlyKwh = bill / avgKwhCost;
-  const systemKw = Math.ceil((monthlyKwh / (avgSunHours * 30) / 0.8) * 10) / 10;
-  const panels = Math.ceil((systemKw * 1000) / 400);
-  const monthlySavings = Math.round(bill * 0.9);
-  const annualSavings = monthlySavings * 12;
-  const installCost = Math.round(systemKw * 1000 * 2.8);
-  const netCost = Math.round(installCost * 0.7);
-  const roiYears = Math.round((netCost / annualSavings) * 10) / 10;
-  const r = 0.07 / 12;
-  const n = 300;
-  const monthlyLoanPayment = Math.round((netCost * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
-  const monthlyLeasePayment = Math.round(monthlySavings * 0.85);
-  return { systemKw, panels, monthlySavings, annualSavings, roiYears, installCost, netCost, monthlyLoanPayment, monthlyLeasePayment };
+  // Pre-satellite estimate — uses scoring.ts with no actualPanels yet
+  // Will be replaced by reconciledEstimate when satellite data loads
+  const e = estimateSolarClient(bill);
+  return {
+    systemKw: e.systemKw,
+    panels: e.panels,
+    monthlySavings: e.monthlySavings,
+    annualSavings: e.annualSavings,
+    roiYears: e.roiYears,
+    installCost: e.installCost,
+    netCost: e.netCost,
+    monthlyLoanPayment: e.monthlyLoanPayment,
+    monthlyLeasePayment: e.monthlyLeasePayment,
+    offsetPercent: e.offsetPercent,
+    annualKwh: e.annualKwh,
+    isRoofLimited: false,
+  };
+}
+
+// Client-side estimate (mirrors scoring.ts logic, avoids server import)
+function estimateSolarClient(bill: number, actualPanels?: number): {
+  systemKw: number; panels: number; monthlySavings: number; annualSavings: number;
+  roiYears: number; installCost: number; netCost: number; monthlyLoanPayment: number;
+  monthlyLeasePayment: number; offsetPercent: number; annualKwh: number; isRoofLimited: boolean;
+} {
+  const kwhCost = 0.17;
+  const sunHours = 5.0;
+  const monthlyKwh = bill / kwhCost;
+  const annualKwhUsage = monthlyKwh * 12;
+
+  const requiredKw = Math.round((monthlyKwh * 0.85) / (sunHours * 30 * 0.80) * 10) / 10;
+  const requiredPanels = Math.ceil((requiredKw * 1000) / 400);
+  const isRoofLimited = actualPanels !== undefined && actualPanels < requiredPanels;
+  const finalPanels = actualPanels !== undefined
+    ? Math.min(32, Math.max(1, actualPanels))
+    : Math.min(32, Math.max(4, requiredPanels));
+
+  const systemKw    = Math.round((finalPanels * 400) / 1000 * 10) / 10;
+  const annualKwh   = Math.round(systemKw * sunHours * 365 * 0.80);
+  const offsetPercent = Math.min(100, Math.round((annualKwh / annualKwhUsage) * 100));
+  const kwhOffset   = Math.min(monthlyKwh, annualKwh / 12);
+  const monthlySavings  = Math.round(kwhOffset * kwhCost);
+  const annualSavings   = monthlySavings * 12;
+  const installCost = Math.round(systemKw * 1000 * 3.00);
+  const netCost     = Math.round(installCost * 0.70);
+  const roiYears    = annualSavings > 0 ? Math.round((netCost / annualSavings) * 10) / 10 : 0;
+  const r = 0.0699 / 12, n = 300;
+  const monthlyLoanPayment = netCost > 0
+    ? Math.round((netCost * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)) : 0;
+  const monthlyLeasePayment = Math.round(monthlySavings * 0.75);
+
+  return { systemKw, panels: finalPanels, monthlySavings, annualSavings, roiYears,
+           installCost, netCost, monthlyLoanPayment, monthlyLeasePayment,
+           offsetPercent, annualKwh, isRoofLimited };
 }
 
 /* ─── Step Components ───────────────────────────────────────────────── */
@@ -436,7 +479,7 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
   );
 }
 
-function StepEstimate({ data, estimate, update, onNext, onBack, submitting, submitError }: { data: FormData; estimate: Estimate; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void; submitting?: boolean; submitError?: string }) {
+function StepEstimate({ data, estimate, update, onNext, onBack, submitting, submitError, onEstimateReconciled }: { data: FormData; estimate: Estimate; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void; submitting?: boolean; submitError?: string; onEstimateReconciled?: (e: Estimate) => void }) {
   const [activeTab, setActiveTab] = useState(data.preferredFinancing || "lease");
 
   return (
@@ -464,21 +507,39 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
           fontFamily: "var(--font-display)", fontWeight: 900, fontSize: "clamp(2.8rem,8vw,4.5rem)",
           background: "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-          animation: "countUp 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards",
         }}>
           ${estimate.monthlySavings}/mo
         </div>
         <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.9rem", marginTop: 4 }}>
           ${estimate.annualSavings.toLocaleString()}/year · ${(estimate.annualSavings * 25).toLocaleString()} over 25 years
         </div>
+        {/* Offset % badge */}
+        {estimate.offsetPercent !== undefined && (
+          <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{
+              background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)",
+              borderRadius: 20, padding: "4px 12px", fontSize: "0.78rem", fontWeight: 700, color: "rgba(255,255,255,0.85)"
+            }}>
+              ⚡ Offsets ~{estimate.offsetPercent}% of your usage
+            </span>
+            {estimate.isRoofLimited && (
+              <span style={{
+                background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.4)",
+                borderRadius: 20, padding: "4px 12px", fontSize: "0.78rem", fontWeight: 700, color: "#fbbf24"
+              }}>
+                🏠 Sized to your roof
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* System specs */}
+      {/* System specs — single source of truth from layout engine */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 20 }}>
         {[
           { val: `${estimate.systemKw} kW`, label: "System size" },
           { val: `${estimate.panels}`, label: "Panels" },
-          { val: `${Math.round(estimate.systemKw * 1600 * 0.8 / 1000)}k kWh`, label: "Annual output" },
+          { val: estimate.annualKwh ? `${(estimate.annualKwh / 1000).toFixed(1)}k kWh` : "—", label: "Annual output" },
           { val: `${estimate.roiYears} yrs`, label: "Payback" },
         ].map((s) => (
           <div key={s.label} style={{ background: "var(--white)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 6px", textAlign: "center" }}>
@@ -497,9 +558,31 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
           zipCode={data.zipCode}
           panels={estimate.panels}
           systemKw={estimate.systemKw}
+          monthlyBill={data.monthlyBill ?? undefined}
           lat={data.lat}
           lng={data.lng}
           address={data.formattedAddress || undefined}
+          onRoofData={(roofData) => {
+            // CLOSED LOOP: satellite data arrives → recalculate everything
+            // from actual placed panels — layout engine is source of truth
+            if (roofData.reconciledEstimate && data.monthlyBill) {
+              const r = roofData.reconciledEstimate;
+              onEstimateReconciled?.({
+                systemKw: r.systemKw,
+                panels: r.panels,
+                monthlySavings: r.monthlySavings,
+                annualSavings: r.annualSavings,
+                roiYears: r.roiYears,
+                installCost: r.installCost,
+                netCost: r.netCost,
+                monthlyLoanPayment: r.monthlyLoanPayment,
+                monthlyLeasePayment: r.monthlyLeasePayment,
+                offsetPercent: r.offsetPercent,
+                annualKwh: r.annualKwh,
+                isRoofLimited: r.isRoofLimited,
+              });
+            }
+          }}
         />
       </div>
 
@@ -1005,7 +1088,7 @@ export default function FunnelPage() {
             />
           )}
           {step === 4 && estimateForStep3 && (
-            <StepEstimate data={formData} estimate={estimateForStep3} update={update} onNext={handleSubmit} onBack={goBack} submitting={submitting} submitError={submitError} />
+            <StepEstimate data={formData} estimate={estimateForStep3} update={update} onNext={handleSubmit} onBack={goBack} submitting={submitting} submitError={submitError} onEstimateReconciled={setEstimate} />
           )}
         </div>
 

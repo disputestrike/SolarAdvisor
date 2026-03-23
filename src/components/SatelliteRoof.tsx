@@ -6,10 +6,26 @@ interface SatelliteRoofProps {
   zipCode: string;
   panels?: number;
   systemKw?: number;
+  monthlyBill?: number;   // passed to API for closed-loop reconciliation
   lat?: number | null;
   lng?: number | null;
   address?: string;
   onRoofData?: (data: RoofData) => void;
+}
+
+interface ReconciledEstimate {
+  systemKw: number;
+  panels: number;
+  monthlySavings: number;
+  annualSavings: number;
+  roiYears: number;
+  installCost: number;
+  netCost: number;
+  monthlyLoanPayment: number;
+  monthlyLeasePayment: number;
+  offsetPercent: number;
+  annualKwh: number;
+  isRoofLimited: boolean;
 }
 
 interface RoofData {
@@ -31,6 +47,7 @@ interface RoofData {
     annualKwh: number;
     efficiencyScore: number;
   };
+  reconciledEstimate?: ReconciledEstimate;
 }
 
 // Build an SVG panel overlay client-side when the API returns one
@@ -47,6 +64,7 @@ export default function SatelliteRoof({
   zipCode,
   panels = 20,
   systemKw,
+  monthlyBill,
   lat,
   lng,
   address,
@@ -72,10 +90,9 @@ export default function SatelliteRoof({
       q.set("lat", String(lat));
       q.set("lng", String(lng));
     }
-    // Pass full address for more accurate Solar API building lookup
-    if (address && address.length > 5) {
-      q.set("address", address);
-    }
+    if (address && address.length > 5) q.set("address", address);
+    // Pass bill so API can return a fully reconciled estimate
+    if (monthlyBill && monthlyBill > 0) q.set("bill", String(monthlyBill));
 
     fetch(`/api/satellite?${q.toString()}`)
       .then((r) => r.json())
