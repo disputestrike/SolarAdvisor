@@ -1,65 +1,45 @@
 /**
- * SolarAdvisor — Solar Layout Engine
+ * SolarAdvisor — Solar Layout Engine v3
  *
- * Key fix: setbacks are applied to the WHOLE roof, not to each segment individually.
- * Applying per-segment setbacks destroys small segments (15-30m²) and yields 0 panels.
+ * Key insight: Google Solar API returns many small segments (5-15m² each).
+ * Splitting usable area per segment yields 0 rows per segment on small roofs.
  *
- * Pipeline:
- * 1. Score each face (azimuth × tilt × shading × sun hours)
- * 2. Compute usable area using the WHOLE roof area for setbacks
- * 3. Distribute usable area across segments proportionally
- * 4. Generate grid per segment (portrait vs landscape)
- * 5. Energy-first fill (best faces first)
- * 6. Target panel count control (stop when reached)
- * 7. Clean block rule (no isolated rows)
+ * Solution: treat the roof as ONE grid per azimuth group.
+ * Group segments by facing direction → combine their areas → one grid per group.
+ * Place all panels for that group at the best segment's centre.
  */
 
-export const PANEL_W_M   = 1.016;  // 40 inches
-export const PANEL_H_M   = 1.700;  // 67 inches
+export const PANEL_W_M   = 1.016;
+export const PANEL_H_M   = 1.700;
 export const PANEL_GAP   = 0.025;
 export const PANEL_WATTS = 400;
 
-// ─── Solar scoring ────────────────────────────────────────────────────────────
-const AZIMUTH_SCORE: Array<[number, number]> = [
-  [22.5, 0.45], [45, 0.50], [67.5, 0.58], [90, 0.68],
-  [112.5, 0.75], [135, 0.85], [157.5, 0.93], [180, 1.00],
-  [202.5, 0.98], [225, 0.93], [247.5, 0.88], [270, 0.80],
-  [292.5, 0.70], [315, 0.60], [337.5, 0.50], [360, 0.45],
-];
-
-function azimuthFactor(az: number): number {
-  const norm = ((az % 360) + 360) % 360;
-  for (const [max, f] of AZIMUTH_SCORE) if (norm <= max) return f;
-  return 0.45;
-}
-
-function tiltFactor(pitch: number): number {
-  if (pitch < 5) return 0.87;
-  if (pitch > 50) return 0.82;
-  return 0.90 + 0.10 * Math.cos(((pitch - 30) / 30) * Math.PI);
-}
-
+// ─── Scoring ──────────────────────────────────────────────────────────────────
 export function scoreFace(az: number, pitch: number, shading = 1.0, sunHours = 1600): number {
-  return Math.min(1.0, azimuthFactor(az) * tiltFactor(pitch) * Math.min(1.0, shading) * Math.min(1.0, sunHours / 1825));
+  const norm = ((az % 360) + 360) % 360;
+  // Azimuth factor: south=1.0, west/east=0.80, north=0.45
+  let af: number;
+  if      (norm >= 157.5 && norm <= 202.5) af = 1.00;  // S
+  else if (norm >= 112.5 && norm <= 247.5) af = 0.90;  // SE/SW broad
+  else if (norm >= 67.5  && norm <= 292.5) af = 0.78;  // E/W
+  else                                      af = 0.45;  // N
+  // Tilt factor
+  const tf = pitch < 5 ? 0.87 : pitch > 50 ? 0.82 : 0.90 + 0.10 * Math.cos(((pitch - 30) / 30) * Math.PI);
+  return Math.min(1.0, af * tf * Math.min(1.0, shading) * Math.min(1.0, sunHours / 1825));
 }
 
-// ─── Usable area — applied to whole roof, not per segment ────────────────────
-// Setbacks are a property of the whole roof perimeter, not each face.
-function wholeRoofUsable(totalAreaM2: number): number {
-  if (totalAreaM2 <= 0) return 0;
-  const side = Math.sqrt(totalAreaM2);
-  // Edge setback (18") × 4 sides
-  const edgeSetback   = 0.457 * side * 4;
-  // Ridge setback (18") × one ridge
-  const ridgeSetback  = 0.457 * side;
-  // Fire pathway (36") × one pathway
-  const pathway       = 0.914 * side;
-  // 15% obstruction buffer (vents, chimneys, skylights)
-  const usable = (totalAreaM2 - edgeSetback - ridgeSetback - pathway) * 0.85;
-  return Math.max(totalAreaM2 * 0.40, usable); // never below 40% of raw area
+// ─── Whole-roof usable area (setbacks applied once) ───────────────────────────
+function wholeRoofUsable(totalM2: number): number {
+  if (totalM2 <= 0) return 0;
+  const side = Math.sqrt(totalM2);
+  // Standard US setbacks: 18" edges × 4, 18" ridge, 36" pathway
+  const setbacks = (0.457 * side * 4) + (0.457 * side) + (0.914 * side);
+  const after = (totalM2 - setbacks) * 0.85; // 15% obstructions
+  // Floor: always at least 35% of raw area to handle tiny roofs
+  return Math.max(totalM2 * 0.35, after);
 }
 
-// ─── Grid computation ─────────────────────────────────────────────────────────
+// ─── Grid ─────────────────────────────────────────────────────────────────────
 interface GridSpec {
   orientation: "portrait" | "landscape";
   cols: number;
@@ -69,22 +49,20 @@ interface GridSpec {
   panelH: number;
 }
 
-function computeGrid(usableM2: number): GridSpec {
-  if (usableM2 <= 0) return { orientation: "portrait", cols: 0, rows: 0, maxPanels: 0, panelW: PANEL_W_M, panelH: PANEL_H_M };
-  // Treat segment as approximately rectangular (wider than tall for most roofs)
-  const side = Math.sqrt(usableM2);
-  const w = side * 1.45;
-  const h = side * 0.69;
+function bestGrid(areaM2: number): GridSpec {
+  if (areaM2 <= 0) return { orientation:"portrait", cols:0, rows:0, maxPanels:0, panelW:PANEL_W_M, panelH:PANEL_H_M };
+  // Approximate bounding rectangle from area
+  const side = Math.sqrt(areaM2);
+  const w = side * 1.6;  // wider than tall
+  const h = side * 0.62;
 
-  const colsP = Math.max(0, Math.floor(w / (PANEL_W_M + PANEL_GAP)));
-  const rowsP = Math.max(0, Math.floor(h / (PANEL_H_M + PANEL_GAP)));
-  const colsL = Math.max(0, Math.floor(w / (PANEL_H_M + PANEL_GAP)));
-  const rowsL = Math.max(0, Math.floor(h / (PANEL_W_M + PANEL_GAP)));
+  const cP = Math.max(0, Math.floor(w / (PANEL_W_M + PANEL_GAP)));
+  const rP = Math.max(0, Math.floor(h / (PANEL_H_M + PANEL_GAP)));
+  const cL = Math.max(0, Math.floor(w / (PANEL_H_M + PANEL_GAP)));
+  const rL = Math.max(0, Math.floor(h / (PANEL_W_M + PANEL_GAP)));
 
-  if (colsL * rowsL > colsP * rowsP) {
-    return { orientation: "landscape", cols: colsL, rows: rowsL, maxPanels: colsL * rowsL, panelW: PANEL_H_M, panelH: PANEL_W_M };
-  }
-  return { orientation: "portrait", cols: colsP, rows: rowsP, maxPanels: colsP * rowsP, panelW: PANEL_W_M, panelH: PANEL_H_M };
+  if (cL * rL > cP * rP) return { orientation:"landscape", cols:cL, rows:rL, maxPanels:cL*rL, panelW:PANEL_H_M, panelH:PANEL_W_M };
+  return { orientation:"portrait", cols:cP, rows:rP, maxPanels:cP*rP, panelW:PANEL_W_M, panelH:PANEL_H_M };
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -116,6 +94,48 @@ export interface LayoutResult {
   breakdown: Array<{ segmentId: number; panels: number; score: number; orientation: string }>;
 }
 
+// ─── Group segments by facing direction ───────────────────────────────────────
+function azimuthBucket(az: number): string {
+  const norm = ((az % 360) + 360) % 360;
+  if (norm >= 135 && norm < 225) return "S";
+  if (norm >= 225 && norm < 315) return "W";
+  if (norm >= 45  && norm < 135) return "E";
+  return "N";
+}
+
+interface FaceGroup {
+  bucket: string;
+  totalAreaM2: number;
+  avgAzimuth: number;
+  avgPitch: number;
+  avgShading: number;
+  bestSegment: RoofSegment; // for positioning the SVG panels
+  score: number;
+}
+
+function groupByFacing(segments: RoofSegment[], sunHours: number): FaceGroup[] {
+  const buckets = new Map<string, RoofSegment[]>();
+  for (const seg of segments) {
+    const key = azimuthBucket(seg.azimuthDegrees);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key)!.push(seg);
+  }
+
+  const groups: FaceGroup[] = [];
+  for (const [bucket, segs] of Array.from(buckets.entries())) {
+    const totalArea = segs.reduce((s, g) => s + g.areaM2, 0);
+    const avgAz     = segs.reduce((s, g) => s + g.azimuthDegrees, 0) / segs.length;
+    const avgPitch  = segs.reduce((s, g) => s + g.pitchDegrees, 0) / segs.length;
+    const avgShading = segs.reduce((s, g) => s + (g.shadingFactor ?? 1.0), 0) / segs.length;
+    // Best segment = largest area (most representative for positioning)
+    const bestSeg   = segs.reduce((a, b) => b.areaM2 > a.areaM2 ? b : a);
+    const score     = scoreFace(avgAz, avgPitch, avgShading, sunHours);
+    groups.push({ bucket, totalAreaM2: totalArea, avgAzimuth: avgAz, avgPitch, avgShading, bestSegment: bestSeg, score });
+  }
+
+  return groups.sort((a, b) => b.score - a.score); // energy-first
+}
+
 // ─── Main layout engine ───────────────────────────────────────────────────────
 export function computeLayout(
   segments: RoofSegment[],
@@ -123,35 +143,29 @@ export function computeLayout(
   annualSunHours = 1600
 ): LayoutResult {
   if (!segments.length || targetPanels <= 0) {
-    return { panels: [], panelCount: 0, systemKw: 0, annualKwh: 0, efficiencyScore: 0, breakdown: [] };
+    return { panels:[], panelCount:0, systemKw:0, annualKwh:0, efficiencyScore:0, breakdown:[] };
   }
 
-  // Total roof area across all segments
   const totalAreaM2 = segments.reduce((s, seg) => s + seg.areaM2, 0);
-  // Apply setbacks ONCE to the whole roof
   const totalUsable = wholeRoofUsable(totalAreaM2);
 
-  // Score each segment and allocate usable area proportionally
-  const scored = segments
-    .map(seg => {
-      const score = scoreFace(seg.azimuthDegrees, seg.pitchDegrees, seg.shadingFactor ?? 1.0, annualSunHours);
-      // Each segment gets its proportional share of the usable area
-      const segUsable = (seg.areaM2 / totalAreaM2) * totalUsable;
-      const grid = computeGrid(segUsable);
-      return { seg, score, segUsable, grid };
-    })
-    .filter(c => c.grid.maxPanels > 0)
-    .sort((a, b) => b.score - a.score); // energy-first
+  // Group small segments into face groups — prevents per-segment area being too small
+  const groups = groupByFacing(segments, annualSunHours);
 
   const placed: PlacedPanel[] = [];
   const breakdown: LayoutResult["breakdown"] = [];
   let remaining = targetPanels;
 
-  for (const { seg, score, grid } of scored) {
+  for (const group of groups) {
     if (remaining <= 0) break;
 
+    // This group's share of usable area (proportional to its raw area)
+    const groupUsable = (group.totalAreaM2 / totalAreaM2) * totalUsable;
+    const grid = bestGrid(groupUsable);
+    if (grid.maxPanels === 0) continue;
+
     const toPlace     = Math.min(grid.maxPanels, remaining);
-    const fullRows    = Math.floor(toPlace / grid.cols);
+    const fullRows    = Math.floor(toPlace / Math.max(1, grid.cols));
     const leftover    = toPlace - fullRows * grid.cols;
     const extraRow    = leftover >= Math.ceil(grid.cols * 0.5) ? 1 : 0;
     const actualRows  = fullRows + extraRow;
@@ -160,26 +174,25 @@ export function computeLayout(
 
     const gridW  = grid.cols * (grid.panelW + PANEL_GAP);
     const gridH  = actualRows * (grid.panelH + PANEL_GAP);
-    const rotDeg = seg.azimuthDegrees - 180;
+    const rotDeg = group.avgAzimuth - 180;
+    const seg    = group.bestSegment;
 
-    let loopCount = 0;
-    for (let r = 0; r < actualRows; r++) {
-      for (let c = 0; c < grid.cols; c++) {
-        if (loopCount >= actualCount) break;
+    let n = 0;
+    for (let r = 0; r < actualRows && n < actualCount; r++) {
+      for (let c = 0; c < grid.cols && n < actualCount; c++) {
         placed.push({
-          segmentId: seg.id,
-          localX: -gridW / 2 + c * (grid.panelW + PANEL_GAP) + grid.panelW / 2,
-          localY: -gridH / 2 + r * (grid.panelH + PANEL_GAP) + grid.panelH / 2,
+          segmentId:   seg.id,
+          localX:      -gridW/2 + c*(grid.panelW + PANEL_GAP) + grid.panelW/2,
+          localY:      -gridH/2 + r*(grid.panelH + PANEL_GAP) + grid.panelH/2,
           orientation: grid.orientation,
           rotationDeg: rotDeg,
-          solarScore: score,
+          solarScore:  group.score,
         });
-        loopCount++;
+        n++;
       }
-      if (loopCount >= actualCount) break;
     }
 
-    breakdown.push({ segmentId: seg.id, panels: actualCount, score, orientation: grid.orientation });
+    breakdown.push({ segmentId: seg.id, panels: actualCount, score: group.score, orientation: grid.orientation });
     remaining -= actualCount;
   }
 
@@ -189,7 +202,7 @@ export function computeLayout(
   const annualKwh       = Math.round(systemKw * (annualSunHours / 365) * 365 * 0.80);
   const efficiencyScore = Math.round(avgScore * 100);
 
-  return { panels: placed, panelCount, systemKw, annualKwh, efficiencyScore, breakdown };
+  return { panels:placed, panelCount, systemKw, annualKwh, efficiencyScore, breakdown };
 }
 
 // ─── SVG overlay ──────────────────────────────────────────────────────────────
@@ -217,7 +230,7 @@ export function layoutToSVG(
     const segPxX = imgW / 2 + dxM / metersPerPx;
     const segPxY = imgH / 2 - dyM / metersPerPx;
 
-    if (segPxX < -50 || segPxX > imgW + 50 || segPxY < -50 || segPxY > imgH + 50) continue;
+    if (segPxX < -100 || segPxX > imgW+100 || segPxY < -100 || segPxY > imgH+100) continue;
 
     const pW = (panel.orientation === "portrait" ? PANEL_W_M : PANEL_H_M) / metersPerPx;
     const pH = (panel.orientation === "portrait" ? PANEL_H_M : PANEL_W_M) / metersPerPx;
@@ -241,7 +254,6 @@ export function layoutToSVG(
   }
 
   if (!svgPanels.length) return "";
-
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${imgW} ${imgH}" width="${imgW}" height="${imgH}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">
   <defs><filter id="pg"><feGaussianBlur stdDeviation="0.8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
   <g filter="url(#pg)">${svgPanels.join("")}</g>
