@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import BrandLogo from "@/components/BrandLogo";
 import PlacesAddressField, { type ResolvedPlace } from "@/components/PlacesAddressField";
-import ManualAddressFields, { buildManualResolved } from "@/components/ManualAddressFields";
 
 const SatelliteRoof = dynamic(() => import("@/components/SatelliteRoof"), { ssr: false });
 const LiveChat = dynamic(() => import("@/components/LiveChat"), { ssr: false });
@@ -180,30 +179,24 @@ function StepAddressEnergy({
   onNext: () => void;
 }) {
   const mapsKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-  /** Always start in manual entry — ZIP from home is a lead-in; Google Places is opt-in (avoids stuck “Loading address search…”). */
-  const [manualMode, setManualMode] = useState(true);
   const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
   const [zipInfo, setZipInfo] = useState<ZipInfo | null>(null);
-  const [loadingZip, setLoadingZip] = useState(false);
   const [error, setError] = useState("");
 
   const lookupZip = useCallback(async (zip: string) => {
     if (zip.length !== 5) return;
-    setLoadingZip(true);
     try {
       const res = await fetch(`/api/leads/zip?zip=${encodeURIComponent(zip)}`);
       if (!res.ok) return;
       const d = (await res.json()) as ZipInfo & { zip?: string; error?: string };
       if (d.state) setZipInfo(d);
-    } catch {
-      /* optional */
-    }
-    setLoadingZip(false);
+    } catch { /* optional */ }
   }, []);
 
   const applyResolved = useCallback(
     (p: ResolvedPlace | null) => {
       setResolved(p);
+      setError("");
       if (!p) {
         update("placeId", "");
         update("lat", null);
@@ -223,43 +216,13 @@ function StepAddressEnergy({
     [update, lookupZip]
   );
 
-  useEffect(() => {
-    if (!manualMode) return;
-    const m = buildManualResolved({
-      streetAddress: data.streetAddress,
-      city: data.city,
-      state: data.state,
-      zipCode: data.zipCode,
-    });
-    applyResolved(m);
-  }, [manualMode, data.streetAddress, data.city, data.state, data.zipCode, applyResolved]);
-
-  /** Prefill ZIP from URL → load region line (state-only if no city in DB). */
-  useEffect(() => {
-    const z = data.zipCode.replace(/\D/g, "").slice(0, 5);
-    if (z.length === 5) void lookupZip(z);
-  }, [data.zipCode, lookupZip]);
-
   const handleNext = () => {
-    if (manualMode) {
-      const m = buildManualResolved({
-        streetAddress: data.streetAddress,
-        city: data.city,
-        state: data.state,
-        zipCode: data.zipCode,
-      });
-      if (!m) {
-        setError("Please complete street, city, state (2 letters), and a 5-digit ZIP.");
-        return;
-      }
-      /** Sync parent + local resolved at submit time — don’t rely on effect timing (fixes Next stuck when resolved state lags). */
-      applyResolved(m);
-    } else if (!resolved) {
-      setError("Please select your full address from the dropdown list.");
+    if (!resolved || !data.formattedAddress) {
+      setError("Please select your address from the Google suggestions list.");
       return;
     }
     if (!data.utilityProvider.trim()) {
-      setError("Enter your electric utility or retail provider (e.g. PG&E, Oncor).");
+      setError("Enter your electric utility or provider (e.g. FPL, ComEd, PG&E).");
       return;
     }
     if (data.monthlyBill === null) {
@@ -272,161 +235,59 @@ function StepAddressEnergy({
 
   return (
     <div>
-      <h2
-        style={{
-          fontFamily: "var(--font-brand)",
-          fontSize: "clamp(1.35rem, 3.5vw, 1.85rem)",
-          fontWeight: 700,
-          color: "#0f172a",
-          marginBottom: 8,
-          letterSpacing: "-0.02em",
-        }}
-      >
-        Determine location &amp; usage
+      <h2 style={{ fontFamily: "var(--font-brand)", fontSize: "clamp(1.35rem, 3.5vw, 1.85rem)", fontWeight: 700, color: "#0f172a", marginBottom: 8, letterSpacing: "-0.02em" }}>
+        Your property &amp; usage
       </h2>
       <p style={{ color: "#64748b", fontSize: "0.92rem", marginBottom: 20, lineHeight: 1.55 }}>
-        {manualMode
-          ? mapsKey
-            ? "Your ZIP is pre-filled from the last step. Complete street, city, and state — or use Google address search below."
-            : "We use your street address for your estimate and to center satellite imagery when coordinates are available. Enter street, city, state, and ZIP below."
-          : "Pick your address from the Google suggestions list, or switch to manual entry."}
+        Start typing your address and select it from the list — we pull real satellite &amp; solar data for that exact building.
       </p>
 
-      {mapsKey && (
-        <div style={{ marginBottom: 14 }}>
-          <button
-            type="button"
-            onClick={() => {
-              setError("");
-              if (manualMode) {
-                setManualMode(false);
-                applyResolved(null);
-              } else {
-                setManualMode(true);
-                applyResolved(null);
-                update("addressInput", "");
-              }
-            }}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              fontSize: "0.88rem",
-              fontWeight: 600,
-              color: "#2563eb",
-              textDecoration: "underline",
-              fontFamily: "var(--font-brand)",
-            }}
-          >
-            {manualMode ? "Use Google address search instead" : "Enter address manually (no dropdown)"}
-          </button>
+      <PlacesAddressField
+        apiKey={mapsKey}
+        value={data.addressInput}
+        onChangeText={(v) => update("addressInput", v)}
+        onResolved={applyResolved}
+        error={error && !resolved ? error : undefined}
+      />
+
+      {resolved && (
+        <div style={{ background: "#ecfdf5", color: "#166534", borderRadius: 8, padding: "10px 14px", fontSize: "0.88rem", fontWeight: 600, marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
+          <span>📍</span> {data.formattedAddress}
+          {zipInfo?.incentives?.stateRebate ? ` · up to $${zipInfo.incentives.stateRebate.toLocaleString()} state rebate available` : ""}
         </div>
       )}
 
-      {manualMode ? (
-        <ManualAddressFields
-          variant={mapsKey ? "manual_choice" : "no_maps_key"}
-          streetAddress={data.streetAddress}
-          city={data.city}
-          state={data.state}
-          zipCode={data.zipCode}
-          update={(k, v) => {
-            setError("");
-            update(k, v);
-          }}
-        />
-      ) : (
-        <PlacesAddressField
-          apiKey={mapsKey}
-          value={data.addressInput}
-          onChangeText={(v) => update("addressInput", v)}
-          onResolved={applyResolved}
-          error={error && !resolved ? error : undefined}
-        />
-      )}
+      {error && <p style={{ color: "#dc2626", fontSize: "0.82rem", marginTop: 4, marginBottom: 8 }}>{error}</p>}
 
-      {manualMode && error && !resolved && (
-        <p style={{ color: "#dc2626", fontSize: "0.82rem", marginTop: 8, marginBottom: 12 }}>{error}</p>
-      )}
-
-      {loadingZip && <p style={{ fontSize: "0.8rem", color: "#64748b" }}>Loading regional incentives…</p>}
-      {zipInfo?.state && (
-        <div
-          style={{
-            background: "#ecfdf5",
-            color: "#166534",
-            borderRadius: 8,
-            padding: "10px 14px",
-            fontSize: "0.88rem",
-            fontWeight: 600,
-            marginBottom: 16,
-          }}
-        >
-          {zipInfo.city ? `${zipInfo.city}, ${zipInfo.state}` : `ZIP ${data.zipCode.replace(/\D/g, "").slice(0, 5)} · ${zipInfo.state}`}
-          {zipInfo.incentives?.stateRebate
-            ? ` · up to $${zipInfo.incentives.stateRebate.toLocaleString()} state programs in some areas`
-            : ""}
-        </div>
-      )}
-
-      <label style={{ display: "block", fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 8 }}>
+      <label style={{ display: "block", fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 8, marginTop: 16 }}>
         Electric utility / provider
       </label>
       <input
         type="text"
-        placeholder="e.g. Austin Energy, ComEd, SDG&amp;E"
+        placeholder="e.g. FPL, ComEd, PG&E, Oncor, Austin Energy"
         value={data.utilityProvider}
-        onChange={(e) => update("utilityProvider", e.target.value)}
-        style={{
-          width: "100%",
-          padding: "14px 16px",
-          fontSize: "1rem",
-          border: "2px solid #e2e8f0",
-          borderRadius: 6,
-          marginBottom: 20,
-          fontFamily: "var(--font-brand)",
-        }}
+        onChange={(e) => { update("utilityProvider", e.target.value); setError(""); }}
+        style={{ width: "100%", padding: "14px 16px", fontSize: "1rem", border: "2px solid #e2e8f0", borderRadius: 6, marginBottom: 20, fontFamily: "var(--font-brand)", outline: "none", boxSizing: "border-box" }}
+        onFocus={(e) => (e.target.style.borderColor = "#ea580c")}
+        onBlur={(e) => (e.target.style.borderColor = "#e2e8f0")}
       />
 
       <div style={{ fontWeight: 700, fontSize: "0.8rem", color: "#0f172a", marginBottom: 10 }}>
         Typical monthly electric bill
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 24 }}>
         {BILL_OPTIONS.map((opt) => {
-          const selected =
-            data.monthlyBill !== null && Number(data.monthlyBill) === opt.value;
+          const selected = data.monthlyBill !== null && Number(data.monthlyBill) === opt.value;
           return (
-            <button
-              key={opt.label}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => {
-                update("monthlyBill", opt.value);
-                setError("");
-              }}
+            <button key={opt.label} type="button" aria-pressed={selected}
+              onClick={() => { update("monthlyBill", opt.value); setError(""); }}
               style={{
-                padding: "12px 6px",
-                borderRadius: 8,
-                fontWeight: selected ? 700 : 600,
-                fontSize: "0.82rem",
-                fontFamily: "var(--font-brand)",
-                cursor: "pointer",
-                transition: "background 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
-                WebkitAppearance: "none",
-                appearance: "none",
+                padding: "12px 6px", borderRadius: 8, fontWeight: selected ? 700 : 600,
+                fontSize: "0.82rem", fontFamily: "var(--font-brand)", cursor: "pointer",
+                WebkitAppearance: "none" as const, appearance: "none" as const,
                 ...(selected
-                  ? {
-                      border: "2px solid #c2410c",
-                      background: "#ea580c",
-                      color: "#ffffff",
-                      boxShadow: "0 2px 10px rgba(234, 88, 12, 0.45)",
-                    }
-                  : {
-                      border: "2px solid #cbd5e1",
-                      background: "#ffffff",
-                      color: "#475569",
-                    }),
+                  ? { border: "2px solid #c2410c", background: "#ea580c", color: "#ffffff", boxShadow: "0 2px 10px rgba(234,88,12,0.45)" }
+                  : { border: "2px solid #cbd5e1", background: "#ffffff", color: "#475569" }),
               }}
             >
               {opt.label}
@@ -435,29 +296,14 @@ function StepAddressEnergy({
         })}
       </div>
 
-      {error && resolved && <p style={{ color: "#dc2626", fontSize: "0.85rem", marginBottom: 12 }}>{error}</p>}
-
-      <button
-        type="button"
-        onClick={handleNext}
-        style={{
-          width: "100%",
-          padding: "16px",
-          background: "#ea580c",
-          color: "white",
-          fontWeight: 700,
-          fontSize: "1rem",
-          borderRadius: 6,
-          border: "none",
-          cursor: "pointer",
-        }}
+      <button type="button" onClick={handleNext}
+        style={{ width: "100%", padding: "16px", background: "#ea580c", color: "white", fontWeight: 700, fontSize: "1rem", borderRadius: 6, border: "none", cursor: "pointer" }}
       >
         Next →
       </button>
     </div>
   );
 }
-
 function StepProperty({ data, update, onNext, onBack }: { data: FormData; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void }) {
   const [error, setError] = useState("");
 

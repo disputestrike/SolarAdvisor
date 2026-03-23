@@ -140,39 +140,44 @@ export function estimateSolar(
   monthlyBill: number,
   _state: string = "TX",
   avgSunHours: number = 5.0,
-  avgKwhCost: number = 0.13
+  avgKwhCost: number = 0.17  // US average ~$0.17/kWh (was incorrectly $0.13)
 ): SolarEstimate {
-  // Estimate monthly usage
-  const monthlyKwh = monthlyBill / avgKwhCost;
+  // Use at least $0.12/kWh to avoid oversizing on low-cost states
+  const kwhCost = Math.max(avgKwhCost, 0.12);
 
-  // System size needed (accounting for 80% efficiency)
-  const systemKw = Math.ceil((monthlyKwh / (avgSunHours * 30) / 0.8) * 10) / 10;
+  // Monthly kWh usage from bill
+  const monthlyKwh = monthlyBill / kwhCost;
 
-  // Panels (400W each)
-  const panels = Math.ceil((systemKw * 1000) / 400);
+  // System size: 1 kW generates ~120 kWh/month (5 sun hours × 30 days × 80% efficiency)
+  // Most residential systems offset 80-90% of usage, not 100%
+  const offsetRatio = 0.85; // offset 85% of usage
+  const systemKw = Math.round((monthlyKwh * offsetRatio) / (avgSunHours * 30 * 0.8) * 10) / 10;
 
-  // Savings (offset 90% of bill)
-  const monthlySavings = Math.round(monthlyBill * 0.9);
+  // Panels: 400W each — cap at realistic residential range (4–32 panels)
+  const panels = Math.min(32, Math.max(4, Math.ceil((systemKw * 1000) / 400)));
+
+  // Savings: 85% of bill (offsetting 85% of usage)
+  const monthlySavings = Math.round(monthlyBill * offsetRatio);
   const annualSavings = monthlySavings * 12;
 
-  // Cost estimate ($2.80/watt installed average)
-  const installCost = Math.round(systemKw * 1000 * 2.8);
+  // Cost: $3.00/watt installed (2024 US average)
+  const installCost = Math.round(systemKw * 1000 * 3.0);
 
   // After 30% federal ITC
   const netCost = Math.round(installCost * 0.7);
 
   // ROI
-  const roiYears = Math.round((netCost / annualSavings) * 10) / 10;
+  const roiYears = annualSavings > 0 ? Math.round((netCost / annualSavings) * 10) / 10 : 0;
 
-  // Monthly loan payment (7% APR, 25 years)
-  const monthlyRate = 0.07 / 12;
+  // Monthly loan (6.99% APR, 25 years)
+  const monthlyRate = 0.0699 / 12;
   const n = 25 * 12;
-  const monthlyLoanPayment = Math.round(
+  const monthlyLoanPayment = netCost > 0 ? Math.round(
     (netCost * monthlyRate * Math.pow(1 + monthlyRate, n)) /
     (Math.pow(1 + monthlyRate, n) - 1)
-  );
+  ) : 0;
 
-  // Monthly lease (typically 10-15% less than savings)
+  // Monthly lease = ~85% of savings (customer keeps 15%)
   const monthlyLeasePayment = Math.round(monthlySavings * 0.85);
 
   return {

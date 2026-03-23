@@ -179,10 +179,10 @@ describe("estimateSolar()", () => {
     expect(high.panels).toBeGreaterThan(low.panels);
   });
 
-  test("savings are 90% of bill", () => {
+  test("savings are 85% of bill (85% usage offset)", () => {
     const bill = 250;
     const e = estimateSolar(bill);
-    expect(e.monthlySavings).toBe(Math.round(bill * 0.9));
+    expect(e.monthlySavings).toBe(Math.round(bill * 0.85));
   });
 
   test("annual savings = monthly × 12", () => {

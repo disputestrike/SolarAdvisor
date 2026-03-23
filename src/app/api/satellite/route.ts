@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { q1, qExec } from "@/db";
 
-// ─── Geocode full address or ZIP → lat/lng ────────────────────────────────────
-async function geocode(query: string, key: string): Promise<{ lat: number; lng: number; formatted: string } | null> {
+async function geocode(query: string, key: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch(
       `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${key}`,
@@ -11,11 +10,10 @@ async function geocode(query: string, key: string): Promise<{ lat: number; lng: 
     const data = await res.json();
     if (data.status !== "OK" || !data.results?.[0]) return null;
     const loc = data.results[0].geometry.location;
-    return { lat: loc.lat, lng: loc.lng, formatted: data.results[0].formatted_address };
+    return { lat: loc.lat, lng: loc.lng };
   } catch { return null; }
 }
 
-// ─── Google Solar API ─────────────────────────────────────────────────────────
 async function getSolarData(lat: number, lng: number, key: string) {
   try {
     const res = await fetch(
@@ -27,55 +25,68 @@ async function getSolarData(lat: number, lng: number, key: string) {
   } catch { return null; }
 }
 
-// ─── Project lat/lng → pixel coords on the Static Maps image ─────────────────
-// Google Static Maps at zoom=20, 640×480: each pixel ≈ 0.149m at equator
-// We use Mercator projection relative to the center point.
+// Project lat/lng offset from center → pixel coords on the satellite image
 function latLngToPixel(
   lat: number, lng: number,
   centerLat: number, centerLng: number,
   zoom: number, imgW: number, imgH: number
 ): { x: number; y: number } {
-  // Use metres-per-pixel at this lat/zoom (Web Mercator)
   const metersPerPx = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
   const dLat = lat - centerLat;
   const dLng = lng - centerLng;
-  const metersPerDegLat = 111320;
-  const metersPerDegLng = 111320 * Math.cos(centerLat * Math.PI / 180);
-  const x = imgW / 2 + (dLng * metersPerDegLng) / metersPerPx;
-  const y = imgH / 2 - (dLat * metersPerDegLat) / metersPerPx;
+  const x = imgW / 2 + (dLng * 111320 * Math.cos(centerLat * Math.PI / 180)) / metersPerPx;
+  const y = imgH / 2 - (dLat * 111320) / metersPerPx;
   return { x, y };
 }
 
-// ─── Build SVG overlay using Solar API roof segment data ─────────────────────
-function buildSolarOverlaySVG(
+// Distance in metres between two lat/lng points
+function distMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dx = (lng2 - lng1) * 111320 * Math.cos(lat1 * Math.PI / 180);
+  const dy = (lat2 - lat1) * 111320;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function buildOverlaySVG(
   solarData: Record<string, unknown>,
   centerLat: number, centerLng: number,
   panelCount: number,
-  zoom: number,
-  imgW: number, imgH: number
+  zoom: number, imgW: number, imgH: number
 ): string {
   const potential = solarData?.solarPotential as Record<string, unknown> | undefined;
 
-  // Use roofSegmentStats to find the best roof faces
-  interface SegStats { pitchDegrees: number; azimuthDegrees: number; stats: { areaMeters2: number; sunshineQuantiles: number[] }; center: { latitude: number; longitude: number } }
-  const segments: SegStats[] = (potential?.roofSegmentStats as SegStats[] | undefined) || [];
+  interface Seg {
+    pitchDegrees: number;
+    azimuthDegrees: number;
+    stats: { areaMeters2: number };
+    center: { latitude: number; longitude: number };
+  }
 
-  // Sort segments by suitability: south-facing (azimuth ~180) and low pitch wins
+  const allSegments: Seg[] = (potential?.roofSegmentStats as Seg[] | undefined) || [];
+
+  // CRITICAL FIX: only use segments within 15m of the building center
+  // This prevents panels appearing on neighbor roofs
+  const ownSegments = allSegments.filter(seg => {
+    if (!seg.center) return false;
+    const dist = distMeters(centerLat, centerLng, seg.center.latitude, seg.center.longitude);
+    return dist < 25; // metres — tight radius around this specific building
+  });
+
+  const segments = ownSegments.length > 0 ? ownSegments : allSegments.slice(0, 2);
+
+  // Sort by suitability: south-facing (azimuth ~180) and low pitch
   const sorted = [...segments].sort((a, b) => {
-    const scoreA = Math.abs(180 - (a.azimuthDegrees || 180)) + (a.pitchDegrees || 20) * 0.5;
-    const scoreB = Math.abs(180 - (b.azimuthDegrees || 180)) + (b.pitchDegrees || 20) * 0.5;
+    const scoreA = Math.abs(180 - (a.azimuthDegrees || 180)) + (a.pitchDegrees || 20) * 0.3;
+    const scoreB = Math.abs(180 - (b.azimuthDegrees || 180)) + (b.pitchDegrees || 20) * 0.3;
     return scoreA - scoreB;
   });
 
-  // Panel dimensions in metres: standard 2m × 1m panel
-  const panelHm = 2.0;
-  const panelWm = 1.0;
   const metersPerPx = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
-  const panelHpx = panelHm / metersPerPx;
-  const panelWpx = panelWm / metersPerPx;
-  const gapPx = 0.15 / metersPerPx;
+  // Standard residential panel: 1.7m × 1.0m
+  const panelH = 1.7 / metersPerPx;
+  const panelW = 1.0 / metersPerPx;
+  const gap    = 0.05 / metersPerPx;
 
-  const panels: string[] = [];
+  const panelsSVG: string[] = [];
   let placed = 0;
 
   for (const seg of sorted) {
@@ -87,100 +98,97 @@ function buildSolarOverlaySVG(
       centerLat, centerLng, zoom, imgW, imgH
     );
 
-    const areaM2 = seg.stats?.areaMeters2 || 20;
-    const maxInSeg = Math.min(Math.floor(areaM2 / (panelHm * panelWm * 1.2)), panelCount - placed);
+    // Skip if segment centre is outside image bounds (another building)
+    if (cx < 0 || cx > imgW || cy < 0 || cy > imgH) continue;
+
+    const areaM2 = seg.stats?.areaMeters2 || 15;
+    const maxInSeg = Math.min(Math.floor(areaM2 / 1.9), panelCount - placed);
     if (maxInSeg <= 0) continue;
 
-    // Rotation angle from azimuth (0 = north, 90 = east, 180 = south)
     const azimuth = seg.azimuthDegrees || 180;
-    const rotDeg = azimuth - 180; // panels face azimuth direction
+    const rotDeg  = azimuth - 180;
+    const rad     = rotDeg * Math.PI / 180;
 
-    // Grid layout centred on segment centre
-    const cols = Math.max(1, Math.round(Math.sqrt(maxInSeg * (panelWpx / panelHpx))));
+    // Grid layout centred on segment
+    const cols = Math.max(1, Math.min(6, Math.round(Math.sqrt(maxInSeg * (panelW / panelH)))));
     const rows = Math.ceil(maxInSeg / cols);
-    const gridW = cols * (panelWpx + gapPx);
-    const gridH = rows * (panelHpx + gapPx);
+    const gridW = cols * (panelW + gap);
+    const gridH = rows * (panelH + gap);
 
     for (let r = 0; r < rows && placed < panelCount; r++) {
       for (let c = 0; c < cols && placed < panelCount; c++) {
-        const px = cx - gridW / 2 + c * (panelWpx + gapPx);
-        const py = cy - gridH / 2 + r * (panelHpx + gapPx);
-        // Rotate around segment centre
-        const rad = (rotDeg * Math.PI) / 180;
-        const rx = cx + (px - cx) * Math.cos(rad) - (py - cy) * Math.sin(rad);
-        const ry = cy + (px - cx) * Math.sin(rad) + (py - cy) * Math.cos(rad);
+        // Local coords relative to segment centre
+        const lx = -gridW / 2 + c * (panelW + gap);
+        const ly = -gridH / 2 + r * (panelH + gap);
+        // Rotate
+        const rx = cx + lx * Math.cos(rad) - ly * Math.sin(rad);
+        const ry = cy + lx * Math.sin(rad) + ly * Math.cos(rad);
 
-        panels.push(`<g transform="translate(${rx.toFixed(1)},${ry.toFixed(1)}) rotate(${rotDeg})">
-          <rect width="${panelWpx.toFixed(1)}" height="${panelHpx.toFixed(1)}" fill="#1a237e" stroke="#4fc3f7" stroke-width="0.6" rx="0.5" opacity="0.88"/>
-          <line x1="${(panelWpx/3).toFixed(1)}" y1="0" x2="${(panelWpx/3).toFixed(1)}" y2="${panelHpx.toFixed(1)}" stroke="#4fc3f7" stroke-width="0.3" opacity="0.5"/>
-          <line x1="${(panelWpx*2/3).toFixed(1)}" y1="0" x2="${(panelWpx*2/3).toFixed(1)}" y2="${panelHpx.toFixed(1)}" stroke="#4fc3f7" stroke-width="0.3" opacity="0.5"/>
-          <line x1="0" y1="${(panelHpx/2).toFixed(1)}" x2="${panelWpx.toFixed(1)}" y2="${(panelHpx/2).toFixed(1)}" stroke="#4fc3f7" stroke-width="0.3" opacity="0.5"/>
-        </g>`);
+        panelsSVG.push(
+          `<g transform="translate(${rx.toFixed(1)},${ry.toFixed(1)}) rotate(${rotDeg})">` +
+          `<rect width="${panelW.toFixed(1)}" height="${panelH.toFixed(1)}" fill="#1a237e" stroke="#4fc3f7" stroke-width="0.5" rx="0.5" opacity="0.9"/>` +
+          `<line x1="${(panelW/3).toFixed(1)}" y1="0" x2="${(panelW/3).toFixed(1)}" y2="${panelH.toFixed(1)}" stroke="#4fc3f7" stroke-width="0.3" opacity="0.5"/>` +
+          `<line x1="${(panelW*2/3).toFixed(1)}" y1="0" x2="${(panelW*2/3).toFixed(1)}" y2="${panelH.toFixed(1)}" stroke="#4fc3f7" stroke-width="0.3" opacity="0.5"/>` +
+          `<line x1="0" y1="${(panelH/2).toFixed(1)}" x2="${panelW.toFixed(1)}" y2="${(panelH/2).toFixed(1)}" stroke="#4fc3f7" stroke-width="0.3" opacity="0.5"/>` +
+          `</g>`
+        );
         placed++;
       }
     }
   }
 
-  // Fallback: if Solar API had no segments, centre the grid on the building
-  if (panels.length === 0) {
-    const cols = Math.min(Math.ceil(Math.sqrt(panelCount * 1.6)), 8);
+  // Fallback: if no segments or all out of bounds, centre on building
+  if (panelsSVG.length === 0) {
+    const cols = Math.min(6, Math.ceil(Math.sqrt(panelCount * 1.2)));
     const rows = Math.ceil(panelCount / cols);
-    const startX = imgW / 2 - (cols * (panelWpx + gapPx)) / 2;
-    const startY = imgH / 2 - (rows * (panelHpx + gapPx)) / 2 - 20;
-    let count = 0;
-    for (let r = 0; r < rows && count < panelCount; r++) {
-      for (let c = 0; c < cols && count < panelCount; c++) {
-        const px = startX + c * (panelWpx + gapPx);
-        const py = startY + r * (panelHpx + gapPx);
-        panels.push(`<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${panelWpx.toFixed(1)}" height="${panelHpx.toFixed(1)}" fill="#1a237e" stroke="#4fc3f7" stroke-width="0.6" rx="0.5" opacity="0.88"/>`);
-        count++;
+    const startX = imgW / 2 - (cols * (panelW + gap)) / 2;
+    const startY = imgH / 2 - (rows * (panelH + gap)) / 2 - 10;
+    let n = 0;
+    for (let r = 0; r < rows && n < panelCount; r++) {
+      for (let c = 0; c < cols && n < panelCount; c++) {
+        const px = startX + c * (panelW + gap);
+        const py = startY + r * (panelH + gap);
+        panelsSVG.push(
+          `<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${panelW.toFixed(1)}" height="${panelH.toFixed(1)}" fill="#1a237e" stroke="#4fc3f7" stroke-width="0.5" rx="0.5" opacity="0.9"/>`
+        );
+        n++;
       }
     }
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${imgW} ${imgH}" width="${imgW}" height="${imgH}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none">
-    <defs>
-      <filter id="panel-glow">
-        <feGaussianBlur stdDeviation="1.5" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>
-    <g filter="url(#panel-glow)">${panels.join("")}</g>
-  </svg>`;
+  <defs><filter id="pg"><feGaussianBlur stdDeviation="1" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <g filter="url(#pg)">${panelsSVG.join("")}</g>
+</svg>`;
 }
 
-// ─── Route ─────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  const zip = req.nextUrl.searchParams.get("zip") || "";
-  const address = req.nextUrl.searchParams.get("address") || "";
+  const zip      = req.nextUrl.searchParams.get("zip") || "";
+  const address  = req.nextUrl.searchParams.get("address") || "";
   const latParam = req.nextUrl.searchParams.get("lat");
   const lngParam = req.nextUrl.searchParams.get("lng");
-  const requestedPanels = parseInt(req.nextUrl.searchParams.get("panels") || "20");
-  const zoom = 20;
-  const imgW = 640;
-  const imgH = 480;
-
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+  const panels   = parseInt(req.nextUrl.searchParams.get("panels") || "12");
+  const zoom     = 20;
+  const imgW = 640, imgH = 480;
+  const key  = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 
   let lat: number | null = null;
   let lng: number | null = null;
   let city: string | null = null;
   let state: string | null = null;
 
-  // Priority 1: explicit lat/lng from Places autocomplete (most accurate)
+  // Priority 1: exact coords from Google Places (most accurate)
   const latN = latParam ? parseFloat(latParam) : NaN;
   const lngN = lngParam ? parseFloat(lngParam) : NaN;
-  if (!Number.isNaN(latN) && !Number.isNaN(lngN)) {
-    lat = latN; lng = lngN;
-  }
+  if (!Number.isNaN(latN) && !Number.isNaN(lngN)) { lat = latN; lng = lngN; }
 
-  // Priority 2: full address geocode
+  // Priority 2: geocode full address
   if (!lat && address && key) {
     const geo = await geocode(address, key);
     if (geo) { lat = geo.lat; lng = geo.lng; }
   }
 
-  // Priority 3: ZIP geocode / cache
+  // Priority 3: ZIP cache / geocode
   if (!lat && zip && /^\d{5}$/.test(zip)) {
     try {
       const cached = await q1<{ lat: string; lng: string; city: string; state: string }>(
@@ -193,72 +201,52 @@ export async function GET(req: NextRequest) {
       const geo = await geocode(zip, key);
       if (geo) {
         lat = geo.lat; lng = geo.lng;
-        try { await qExec("INSERT IGNORE INTO zip_cache (zip_code, lat, lng) VALUES (?,?,?)", [zip, lat, lng]); } catch { /**/ }
+        try { await qExec("INSERT IGNORE INTO zip_cache (zip_code, lat, lng) VALUES (?,?,?)", [zip, lat, lng]); } catch { /* best effort */ }
       }
     }
   }
 
   if (!lat || !lng) {
-    return NextResponse.json({ error: "Could not resolve location. Provide lat/lng, address, or valid ZIP." }, { status: 400 });
+    return NextResponse.json({ error: "Could not resolve location." }, { status: 400 });
   }
 
-  // Google Solar API — real roof data
+  // Google Solar API
   let solarData = null;
-  let roofAreaM2 = 120;
-  let maxPanels = 40;
+  let roofAreaM2 = 100;
+  let maxPanels = 24;
   let annualSunshine = 1600;
 
   if (key) {
     solarData = await getSolarData(lat, lng, key);
     if (solarData?.solarPotential) {
-      roofAreaM2 = solarData.solarPotential.wholeRoofStats?.areaMeters2 || 120;
-      maxPanels = solarData.solarPotential.maxArrayPanelsCount || 40;
+      roofAreaM2    = solarData.solarPotential.wholeRoofStats?.areaMeters2 || 100;
+      maxPanels     = Math.min(32, solarData.solarPotential.maxArrayPanelsCount || 24);
       annualSunshine = solarData.solarPotential.maxSunshineHoursPerYear || 1600;
     }
   }
 
-  // Deterministic fallback when Solar API unavailable
+  // Deterministic fallback
   if (!solarData && zip) {
     const seed = parseInt(zip, 10);
-    roofAreaM2 = 85 + (seed % 120);
-    annualSunshine = 1250 + (seed % 650);
-    maxPanels = Math.max(10, Math.min(70, Math.round(roofAreaM2 / 2.3)));
+    roofAreaM2     = 80 + (seed % 80);
+    annualSunshine = 1300 + (seed % 500);
+    maxPanels      = Math.min(24, Math.round(roofAreaM2 / 4));
   }
 
-  const roofCapacity = Math.max(6, Math.round(roofAreaM2 / 2.2));
-  const sunshineFactor = Math.max(0.8, Math.min(1.2, annualSunshine / 1600));
-  const suggestedPanels = Math.max(6, Math.min(maxPanels, Math.round(roofCapacity * sunshineFactor)));
-  const panelCount = Math.max(6, Math.min(maxPanels, Number.isFinite(requestedPanels) ? requestedPanels : suggestedPanels));
+  const suggestedPanels = Math.max(4, Math.min(maxPanels, Math.round(roofAreaM2 / 7)));
+  const panelCount = Math.max(4, Math.min(maxPanels, Number.isFinite(panels) ? panels : suggestedPanels));
 
-  // Satellite image — centred on the actual building coordinates
   const satelliteUrl = key
     ? `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoom}&size=${imgW}x${imgH}&maptype=satellite&key=${key}`
     : null;
 
-  // Build accurate SVG overlay
-  const overlaySvg = buildSolarOverlaySVG(solarData || {}, lat, lng, panelCount, zoom, imgW, imgH);
+  const overlaySvg = buildOverlaySVG(solarData || {}, lat, lng, panelCount, zoom, imgW, imgH);
 
   return NextResponse.json({
-    success: true,
-    zip,
-    city,
-    state,
-    lat,
-    lng,
-    hasGoogleKey: !!key,
+    success: true, zip, city, state, lat, lng, hasGoogleKey: !!key,
     satellite: { imageUrl: satelliteUrl, zoom },
-    roof: {
-      areaM2: Math.round(roofAreaM2),
-      maxPanels,
-      annualSunshineHours: Math.round(annualSunshine),
-      panelsSuggested: suggestedPanels,
-    },
+    roof: { areaM2: Math.round(roofAreaM2), maxPanels, annualSunshineHours: Math.round(annualSunshine), panelsSuggested: suggestedPanels },
     overlay: { svg: overlaySvg, panelCount },
-    solarApiData: solarData ? {
-      buildingName: solarData.name,
-      imageryDate: solarData.imageryDate,
-      postalCode: solarData.postalCode,
-      roofSegments: solarData.solarPotential?.roofSegmentStats?.length || 0,
-    } : null,
+    solarApiData: solarData ? { imageryDate: solarData.imageryDate, roofSegments: solarData.solarPotential?.roofSegmentStats?.length || 0 } : null,
   });
 }
