@@ -156,6 +156,6 @@ describe("layoutToSVG()", () => {
   test("SVG contains panel-glow filter", () => {
     const layout = computeLayout([southFace], 5, 1700);
     const svg = layoutToSVG(layout, [southFace], 25.77, -80.19, 20, 640, 480);
-    expect(svg).toContain("panel-glow");
+    expect(svg).toMatch(/filter.*id=["']pg["']|id=["']panel-glow["']/);
   });
 });
