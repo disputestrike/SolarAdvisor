@@ -182,9 +182,10 @@ export function computeLayout(
     const fullRows    = Math.floor(toPlace / grid.cols);
     const leftover    = toPlace - fullRows * grid.cols;
     // Clean block rule: accept partial last row only if ≥ 50% filled
+    // BUT never exceed target — cap at toPlace
     const extraRow    = (leftover > 0 && leftover >= grid.cols * 0.5) ? 1 : 0;
     const actualRows  = fullRows + extraRow;
-    const actualCount = actualRows * grid.cols;
+    const actualCount = Math.min(toPlace, actualRows * grid.cols);
 
     if (actualCount === 0) continue;
 
@@ -192,8 +193,10 @@ export function computeLayout(
     const gridH    = actualRows * (grid.panelH + PANEL_GAP);
     const rotDeg   = seg.azimuthDegrees - 180;
 
+    let loopCount = 0;
     for (let r = 0; r < actualRows; r++) {
       for (let c = 0; c < grid.cols; c++) {
+        if (loopCount >= actualCount) break;
         const lx = -gridW / 2 + c * (grid.panelW + PANEL_GAP) + grid.panelW / 2;
         const ly = -gridH / 2 + r * (grid.panelH + PANEL_GAP) + grid.panelH / 2;
         placed.push({
@@ -204,7 +207,9 @@ export function computeLayout(
           rotationDeg: rotDeg,
           solarScore: score,
         });
+        loopCount++;
       }
+      if (loopCount >= actualCount) break;
     }
 
     breakdown.push({ segmentId: seg.id, panels: actualCount, score, orientation: grid.orientation });
@@ -240,13 +245,13 @@ export function layoutToSVG(
     const seg = segMap.get(panel.segmentId);
     if (!seg) continue;
 
-    // Segment centre in pixels relative to image centre
+    // Segment centre in pixels
     const dxM = (seg.centerLng - centerLng) * 111320 * Math.cos(centerLat * Math.PI / 180);
     const dyM = (seg.centerLat - centerLat) * 111320;
     const segPxX = imgW / 2 + dxM / metersPerPx;
     const segPxY = imgH / 2 - dyM / metersPerPx;
 
-    // Panel local offset in pixels
+    // Panel local offset in pixels (no rotation here — SVG rotate handles it)
     const localPxX = panel.localX / metersPerPx;
     const localPxY = panel.localY / metersPerPx;
 
@@ -254,13 +259,9 @@ export function layoutToSVG(
     const pW = (panel.orientation === "portrait" ? PANEL_W_M : PANEL_H_M) / metersPerPx;
     const pH = (panel.orientation === "portrait" ? PANEL_H_M : PANEL_W_M) / metersPerPx;
 
-    // Rotate local offset around segment centre
-    const rad = (panel.rotationDeg * Math.PI) / 180;
-    const rotX = localPxX * Math.cos(rad) - localPxY * Math.sin(rad);
-    const rotY = localPxX * Math.sin(rad) + localPxY * Math.cos(rad);
-
-    const finalX = segPxX + rotX - pW / 2;
-    const finalY = segPxY + rotY - pH / 2;
+    // Final position: segment centre + local offset, centred on panel
+    const finalX = segPxX + localPxX - pW / 2;
+    const finalY = segPxY + localPxY - pH / 2;
 
     // Skip panels outside image bounds
     if (finalX < -pW || finalX > imgW || finalY < -pH || finalY > imgH) continue;
