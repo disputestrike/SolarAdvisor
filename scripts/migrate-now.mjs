@@ -17,14 +17,21 @@ const root = join(__dirname, "..");
 dotenv.config({ path: join(root, ".env.local") });
 dotenv.config({ path: join(root, ".env") });
 
-// Try every possible Railway env var name
-const uri =
-  process.env.MYSQL_URL ||
-  process.env.MYSQLPRIVATE_URL ||
-  process.env.MYSQL_PUBLIC_URL ||
-  process.env.DATABASE_URL;
+function isPlaceholder(s) {
+  return !s || /your-password|your-railway-host|localhost:3306\/solaradvisor|\$\{\{/.test(s);
+}
 
-const host     = process.env.MYSQLHOST      || process.env.MYSQL_HOST      || "localhost";
+// Individual vars first (most reliable on Railway)
+const host     = process.env.MYSQLHOST      || process.env.MYSQL_HOST      || "";
+
+// URL candidates — DATABASE_URL last (often has placeholder text)
+const uriCandidates = [
+  process.env.MYSQL_URL,
+  process.env.MYSQLPRIVATE_URL,
+  process.env.MYSQL_PUBLIC_URL,
+  process.env.DATABASE_URL,
+].filter(u => u && /^mysql(2)?:\/\//i.test(u) && !isPlaceholder(u));
+const uri = uriCandidates[0] || null;
 const port     = parseInt(process.env.MYSQLPORT || process.env.MYSQL_PORT  || "3306");
 const user     = process.env.MYSQLUSER      || process.env.MYSQL_USER      || "root";
 const password = process.env.MYSQLPASSWORD  || process.env.MYSQL_PASSWORD  || process.env.MYSQL_ROOT_PASSWORD || "";

@@ -481,6 +481,10 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
 
 function StepEstimate({ data, estimate, update, onNext, onBack, submitting, submitError, onEstimateReconciled }: { data: FormData; estimate: Estimate; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void; submitting?: boolean; submitError?: string; onEstimateReconciled?: (e: Estimate) => void }) {
   const [activeTab, setActiveTab] = useState(data.preferredFinancing || "lease");
+  // Lock the initial panel count so SatelliteRoof never re-fetches after reconciliation
+  // Without this: onRoofData fires → setEstimate → new panels prop → SatelliteRoof re-fetches → infinite loop
+  const [initialPanels] = useState(estimate.panels);
+  const [reconciled, setReconciled] = useState(false);
 
   return (
     <div>
@@ -556,16 +560,18 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
         </div>
         <SatelliteRoof
           zipCode={data.zipCode}
-          panels={estimate.panels}
+          panels={initialPanels}
           systemKw={estimate.systemKw}
           monthlyBill={data.monthlyBill ?? undefined}
           lat={data.lat}
           lng={data.lng}
           address={data.formattedAddress || undefined}
           onRoofData={(roofData) => {
-            // CLOSED LOOP: satellite data arrives → recalculate everything
-            // from actual placed panels — layout engine is source of truth
+            // Only reconcile once — prevents infinite re-fetch loop
+            // (onRoofData → setEstimate → new panels prop → re-fetch → repeat)
+            if (reconciled) return;
             if (roofData.reconciledEstimate && data.monthlyBill) {
+              setReconciled(true);
               const r = roofData.reconciledEstimate;
               onEstimateReconciled?.({
                 systemKw: r.systemKw,
@@ -932,11 +938,13 @@ export default function FunnelPage() {
     }
   }, []);
 
-  // Pre-calculate estimate when bill is set
+  // Set initial estimate once when bill is first available — never overwrite after that
+  // (overwriting causes the blinking loop: quickEstimate → SatelliteRoof re-fetch → reconcile → quickEstimate again)
   useEffect(() => {
-    if (formData.monthlyBill) {
+    if (formData.monthlyBill && !estimate) {
       setEstimate(quickEstimate(formData.monthlyBill));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.monthlyBill]);
 
   const goNext = () => {
