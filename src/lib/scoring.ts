@@ -140,36 +140,28 @@ export function estimateSolar(
   monthlyBill: number,
   _state: string = "TX",
   avgSunHours: number = 5.0,
-  avgKwhCost: number = 0.17  // US average ~$0.17/kWh (was incorrectly $0.13)
+  avgKwhCost: number = 0.17,
+  layoutAnnualKwh?: number   // from layout engine when available — overrides estimate
 ): SolarEstimate {
-  // Use at least $0.12/kWh to avoid oversizing on low-cost states
   const kwhCost = Math.max(avgKwhCost, 0.12);
-
-  // Monthly kWh usage from bill
   const monthlyKwh = monthlyBill / kwhCost;
-
-  // System size: 1 kW generates ~120 kWh/month (5 sun hours × 30 days × 80% efficiency)
-  // Most residential systems offset 80-90% of usage, not 100%
-  const offsetRatio = 0.85; // offset 85% of usage
+  const offsetRatio = 0.85;
   const systemKw = Math.round((monthlyKwh * offsetRatio) / (avgSunHours * 30 * 0.8) * 10) / 10;
-
-  // Panels: 400W each — cap at realistic residential range (4–32 panels)
   const panels = Math.min(32, Math.max(4, Math.ceil((systemKw * 1000) / 400)));
 
-  // Savings: 85% of bill (offsetting 85% of usage)
-  const monthlySavings = Math.round(monthlyBill * offsetRatio);
+  // Use layout engine annual kWh if provided (more accurate)
+  // Otherwise estimate from system size and sun hours
+  const annualKwh = layoutAnnualKwh ?? Math.round(systemKw * avgSunHours * 365 * 0.80);
+
+  // Savings based on actual production vs bill
+  const kwhOffsetted = Math.min(monthlyKwh, annualKwh / 12);
+  const monthlySavings = Math.round(kwhOffsetted * kwhCost);
   const annualSavings = monthlySavings * 12;
 
-  // Cost: $3.00/watt installed (2024 US average)
   const installCost = Math.round(systemKw * 1000 * 3.0);
-
-  // After 30% federal ITC
   const netCost = Math.round(installCost * 0.7);
-
-  // ROI
   const roiYears = annualSavings > 0 ? Math.round((netCost / annualSavings) * 10) / 10 : 0;
 
-  // Monthly loan (6.99% APR, 25 years)
   const monthlyRate = 0.0699 / 12;
   const n = 25 * 12;
   const monthlyLoanPayment = netCost > 0 ? Math.round(
@@ -177,7 +169,6 @@ export function estimateSolar(
     (Math.pow(1 + monthlyRate, n) - 1)
   ) : 0;
 
-  // Monthly lease = ~85% of savings (customer keeps 15%)
   const monthlyLeasePayment = Math.round(monthlySavings * 0.85);
 
   return {

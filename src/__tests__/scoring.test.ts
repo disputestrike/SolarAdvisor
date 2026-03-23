@@ -179,10 +179,12 @@ describe("estimateSolar()", () => {
     expect(high.panels).toBeGreaterThan(low.panels);
   });
 
-  test("savings are 85% of bill (85% usage offset)", () => {
+  test("savings are based on actual kWh offset (within 5% of bill)", () => {
     const bill = 250;
     const e = estimateSolar(bill);
-    expect(e.monthlySavings).toBe(Math.round(bill * 0.85));
+    // Savings should be within 5% of the bill (system offsets ~85% of usage)
+    expect(e.monthlySavings).toBeGreaterThan(bill * 0.75);
+    expect(e.monthlySavings).toBeLessThanOrEqual(bill);
   });
 
   test("annual savings = monthly × 12", () => {

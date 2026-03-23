@@ -22,9 +22,15 @@ interface RoofData {
     maxPanels: number;
     annualSunshineHours: number;
     panelsSuggested: number;
+    bestFaceScore?: number;
   };
   satellite: { imageUrl: string | null };
   overlay?: { svg?: string; panelCount?: number };
+  layout?: {
+    systemKw: number;
+    annualKwh: number;
+    efficiencyScore: number;
+  };
 }
 
 // Build an SVG panel overlay client-side when the API returns one
@@ -158,7 +164,24 @@ export default function SatelliteRoof({
             <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.72rem" }}>
               {data.roof.areaM2 > 0 ? `~${data.roof.areaM2} m² roof · ` : ""}
               {data.roof.annualSunshineHours} h sunshine/yr
+              {data.layout?.annualKwh ? ` · ~${data.layout.annualKwh.toLocaleString()} kWh/yr` : ""}
             </div>
+            {data.layout?.efficiencyScore && (
+              <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
+                <div style={{
+                  height: 4, width: 60, background: "rgba(255,255,255,0.15)", borderRadius: 2, overflow: "hidden"
+                }}>
+                  <div style={{
+                    height: "100%", borderRadius: 2,
+                    width: `${data.layout.efficiencyScore}%`,
+                    background: data.layout.efficiencyScore > 80 ? "#4fc3f7" : data.layout.efficiencyScore > 60 ? "#fbbf24" : "#f87171",
+                  }} />
+                </div>
+                <span style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.65rem" }}>
+                  {data.layout.efficiencyScore}% efficiency
+                </span>
+              </div>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>

@@ -474,15 +474,16 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
       </div>
 
       {/* System specs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 20 }}>
         {[
           { val: `${estimate.systemKw} kW`, label: "System size" },
           { val: `${estimate.panels}`, label: "Panels" },
-          { val: `${estimate.roiYears} yrs`, label: "Simple payback" },
+          { val: `${Math.round(estimate.systemKw * 1600 * 0.8 / 1000)}k kWh`, label: "Annual output" },
+          { val: `${estimate.roiYears} yrs`, label: "Payback" },
         ].map((s) => (
-          <div key={s.label} style={{ background: "var(--white)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "16px 10px", textAlign: "center" }}>
-            <div style={{ fontFamily: "var(--font-brand)", fontWeight: 700, fontSize: "1.15rem", color: "#c2410c" }}>{s.val}</div>
-            <div style={{ fontSize: "0.72rem", color: "#64748b", fontWeight: 600, marginTop: 4 }}>{s.label}</div>
+          <div key={s.label} style={{ background: "var(--white)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 6px", textAlign: "center" }}>
+            <div style={{ fontFamily: "var(--font-brand)", fontWeight: 700, fontSize: "1rem", color: "#c2410c" }}>{s.val}</div>
+            <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 600, marginTop: 4 }}>{s.label}</div>
           </div>
         ))}
       </div>
