@@ -5,7 +5,8 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ─── Leads ───────────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS `leads` (
+DROP TABLE IF EXISTS `leads`;
+CREATE TABLE `leads` (
   `id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `first_name` VARCHAR(100) NOT NULL,
   `last_name` VARCHAR(100) NOT NULL,

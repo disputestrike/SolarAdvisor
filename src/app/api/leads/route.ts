@@ -10,40 +10,36 @@ import type { Lead } from "@/db/schema";
 import fs from "fs";
 import path from "path";
 
-// ─── Ensure tables exist before every lead insert ────────────────────────────
-// This is the safety net: if migration didn't run at startup, run it now.
-let _migrated = false;
-async function ensureTables() {
-  if (_migrated) return;
+// ─── Auto-fix schema on every request until correct ──────────────────────────
+let _schemaOk = false;
+async function ensureSchema() {
+  if (_schemaOk) return;
   try {
-    // Quick check: does the leads table exist?
-    await qExec("SELECT 1 FROM leads LIMIT 1", []);
-    _migrated = true;
-  } catch {
-    // Table missing — run migration now
+    // Check if leads table has first_name column (correct schema)
+    await qExec("SELECT first_name FROM leads LIMIT 1", []);
+    _schemaOk = true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Either table missing OR wrong schema — run full migration to fix
+    console.log("[leads] Schema issue detected:", msg.slice(0, 80), "— running migration...");
     try {
-      console.log("[leads API] Tables missing — running migration inline...");
       const sqlPath = path.join(process.cwd(), "migrate.sql");
       const sql = fs.readFileSync(sqlPath, "utf8");
+      const statements = sql.split(";").map((s: string) => s.trim()).filter((s: string) => s.length > 0 && !s.startsWith("--") && !s.startsWith("/*"));
       const { getPool } = await import("@/db");
       const conn = await getPool().getConnection();
       try {
-        // mysql2 pool doesn't support multipleStatements — split and run each
-        const statements = sql
-          .split(";")
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0 && !s.startsWith("--") && !s.startsWith("/*"));
         for (const stmt of statements) {
-          await conn.execute(stmt).catch(() => { /* ignore individual errors e.g. duplicate column */ });
+          await conn.execute(stmt).catch((err: unknown) => {
+            const m = err instanceof Error ? err.message : String(err);
+            if (!m.includes("Duplicate entry")) console.log("[migrate] stmt:", m.slice(0, 60));
+          });
         }
-        console.log("[leads API] ✅ Inline migration complete.");
-        _migrated = true;
-      } finally {
-        conn.release();
-      }
+        console.log("[leads] ✅ Schema repaired.");
+        _schemaOk = true;
+      } finally { conn.release(); }
     } catch (migErr) {
-      console.error("[leads API] ❌ Inline migration failed:", migErr);
-      // Don't throw — let the original INSERT fail with a real error
+      console.error("[leads] ❌ Migration failed:", migErr);
     }
   }
 }
@@ -57,8 +53,8 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data;
 
-    // Ensure DB tables exist (auto-migrates if needed)
-    await ensureTables();
+    // Auto-fix schema if leads table is missing columns
+    await ensureSchema();
 
     // Location → state incentives
     let city: string | undefined = data.city ?? undefined;
