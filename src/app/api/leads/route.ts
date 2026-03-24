@@ -155,24 +155,46 @@ export async function POST(req: NextRequest) {
       ).catch(console.error);
     }
 
+    // Build lead object from data already in memory (avoids snake_case/camelCase mismatch
+    // that happens when re-fetching from DB with raw SQL)
+    const leadForNotify = {
+      id: leadId,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      phone: phoneE164,
+      contactPreference: data.contactPreference,
+      zipCode: data.zipCode,
+      formattedAddress: data.formattedAddress,
+      latitude: data.latitude ?? null,
+      longitude: data.longitude ?? null,
+      city: city ?? null,
+      state: state ?? null,
+      monthlyBill: data.monthlyBill,
+      utilityProvider: data.utilityProvider,
+      isHomeowner: data.isHomeowner,
+      score: finalScore.score,
+      tier: finalScore.tier,
+      estimatedSystemKw: estimate.systemKw,
+      estimatedPanels: estimate.panels,
+      estimatedMonthlySavings: estimate.monthlySavings,
+      estimatedAnnualSavings: estimate.annualSavings,
+      estimatedRoi: estimate.roiYears,
+      preferredFinancing: data.preferredFinancing ?? "undecided",
+    } as unknown as Lead;
+
     // Notify + webhook (fully async, never blocks response)
-    q1<Lead>("SELECT * FROM leads WHERE id = ? LIMIT 1", [leadId])
-      .then((fullLead) => {
-        if (!fullLead) return;
-        const lead = fullLead as unknown as Lead;
-        return Promise.all([
-          notifyLeadReceived(lead),
-          sendLeadWebhook(lead).then(async (wr) => {
-            if (wr.success) {
-              await qExec(
-                "UPDATE leads SET webhook_sent=1, webhook_sent_at=NOW(), webhook_response=? WHERE id=?",
-                [wr.response ?? "", leadId]
-              );
-            }
-          }),
-        ]);
-      })
-      .catch(console.error);
+    Promise.all([
+      notifyLeadReceived(leadForNotify),
+      sendLeadWebhook(leadForNotify).then(async (wr) => {
+        if (wr.success) {
+          await qExec(
+            "UPDATE leads SET webhook_sent=1, webhook_sent_at=NOW(), webhook_response=? WHERE id=?",
+            [wr.response ?? "", leadId]
+          );
+        }
+      }),
+    ]).catch(console.error);
 
     return NextResponse.json({ success: true, leadId, tier: finalScore.tier, score: finalScore.score, estimate });
 
