@@ -14,33 +14,13 @@ function toSqlParams(params: (string | number | boolean | null | undefined)[]): 
 
 let _pool: mysql.Pool | null = null;
 
-/**
- * Connection priority (highest → lowest):
- *
- * 1. MYSQLHOST individual vars — these are what Railway injects when the
- *    MySQL plugin is linked to the service. Most reliable.
- *
- * 2. MYSQL_URL / MYSQLPRIVATE_URL — Railway also injects these, but only
- *    after the service link is established.
- *
- * 3. MYSQL_PUBLIC_URL — fallback for external access.
- *
- * DATABASE_URL is DELIBERATELY LAST and skipped if it contains placeholder
- * text like "your-password" or "your-railway-host" — this is the variable
- * that has been blocking the connection by overriding the real MySQL vars.
- */
-function isPlaceholder(s: string): boolean {
-  return /your-password|your-railway-host|localhost:3306\/solaradvisor|\$\{\{/.test(s);
-}
-
-function isValidMysqlUrl(raw: string | undefined): raw is string {
-  if (!raw) return false;
-  const u = raw.trim();
-  return /^mysql(2)?:\/\//i.test(u) && !isPlaceholder(u);
+function isPlaceholder(s: string | undefined): boolean {
+  if (!s) return true;
+  return /your-password|your-railway|placeholder|\$\{\{|localhost:3306\/solaradvisor/i.test(s);
 }
 
 function getPoolOptions(): mysql.PoolOptions {
-  const base: Partial<mysql.PoolOptions> = {
+  const base = {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
@@ -50,7 +30,7 @@ function getPoolOptions(): mysql.PoolOptions {
     ssl: { rejectUnauthorized: false },
   };
 
-  // ── Priority 1: individual Railway vars ──────────────────────────────────
+  // Priority 1: MYSQLHOST individual vars (Railway injects these when plugin is linked)
   const host = process.env.MYSQLHOST || process.env.RAILWAY_PRIVATE_DOMAIN || process.env.MYSQL_HOST || "";
   const port = parseInt(process.env.MYSQLPORT || process.env.MYSQL_PORT || "3306", 10);
   const user = process.env.MYSQLUSER || process.env.MYSQL_USER || "root";
@@ -58,28 +38,21 @@ function getPoolOptions(): mysql.PoolOptions {
   const database = process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || "railway";
 
   if (host && !isPlaceholder(host)) {
-    console.log(`[db] Connecting: ${user}@${host}:${port}/${database}`);
+    console.log(`[db] ${user}@${host}:${port}/${database}`);
     return { ...base, host, port, user, password, database } as mysql.PoolOptions;
   }
 
-  // ── Priority 2: URL vars (skip DATABASE_URL with placeholder) ────────────
-  const urlCandidates = [
-    process.env.MYSQL_URL,
-    process.env.MYSQLPRIVATE_URL,
-    process.env.MYSQL_PUBLIC_URL,
-    process.env.DATABASE_URL, // last — often has placeholder text
-  ];
-
-  for (const raw of urlCandidates) {
-    if (isValidMysqlUrl(raw)) {
-      console.log(`[db] Connecting via URL: ${raw.replace(/:([^:@]+)@/, ":***@")}`);
-      return { ...base, uri: raw.trim() } as mysql.PoolOptions;
+  // Priority 2: MYSQL_URL or MYSQLPRIVATE_URL (NOT DATABASE_URL — it has placeholder text)
+  for (const raw of [process.env.MYSQL_URL, process.env.MYSQLPRIVATE_URL, process.env.MYSQL_PUBLIC_URL]) {
+    if (raw && /^mysql/i.test(raw) && !isPlaceholder(raw)) {
+      console.log(`[db] URL: ${raw.replace(/:([^:@]+)@/, ":***@")}`);
+      return { ...base, uri: raw } as mysql.PoolOptions;
     }
   }
 
-  // ── Fallback: localhost (local dev) ───────────────────────────────────────
-  console.warn("[db] ⚠️  No valid DB config — using localhost. On Railway: link MySQL plugin to this service.");
-  return { ...base, host: "localhost", port: 3306, user: "root", password, database: "solaradvisor" } as mysql.PoolOptions;
+  // DATABASE_URL is intentionally excluded — it always contains placeholder text in this project
+  console.warn("[db] No valid DB config. Link MySQL plugin to this service in Railway.");
+  return { ...base, host: "127.0.0.1", port: 3306, user, password, database } as mysql.PoolOptions;
 }
 
 export function getPool(): mysql.Pool {

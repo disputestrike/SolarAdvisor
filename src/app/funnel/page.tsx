@@ -481,10 +481,41 @@ function StepProperty({ data, update, onNext, onBack }: { data: FormData; update
 
 function StepEstimate({ data, estimate, update, onNext, onBack, submitting, submitError, onEstimateReconciled }: { data: FormData; estimate: Estimate; update: (k: keyof FormData, v: string | boolean | number | null) => void; onNext: () => void; onBack: () => void; submitting?: boolean; submitError?: string; onEstimateReconciled?: (e: Estimate) => void }) {
   const [activeTab, setActiveTab] = useState(data.preferredFinancing || "lease");
-  // Lock the initial panel count so SatelliteRoof never re-fetches after reconciliation
-  // Without this: onRoofData fires → setEstimate → new panels prop → SatelliteRoof re-fetches → infinite loop
   const [initialPanels] = useState(estimate.panels);
   const [reconciled, setReconciled] = useState(false);
+
+  // Offset slider state
+  // roofMaxPanels = what physically fits (from layout engine)
+  // fullOffsetPanels = what's needed for 100% offset
+  const roofMaxPanels = estimate.panels; // locked after reconciliation
+  const kwhCost = 0.17;
+  const sunHoursPerDay = 5.0;
+  const monthlyKwh = (data.monthlyBill || 0) / kwhCost;
+  const fullOffsetPanels = Math.min(80, Math.ceil((monthlyKwh / (sunHoursPerDay * 30 * 0.80)) * 1000 / 400));
+  const sliderMax = Math.max(roofMaxPanels, fullOffsetPanels);
+
+  const [sliderPanels, setSliderPanels] = useState(roofMaxPanels);
+
+  // Recalculate estimates from slider value (client-side, instant)
+  const sliderEstimate = estimateSolarClient(data.monthlyBill || 0, sliderPanels);
+  const isAboveRoof = sliderPanels > roofMaxPanels;
+
+  // Use slider estimate for display when user has moved it
+  const displayEstimate = sliderPanels !== roofMaxPanels ? {
+    ...estimate,
+    systemKw: sliderEstimate.systemKw,
+    panels: sliderEstimate.panels,
+    monthlySavings: sliderEstimate.monthlySavings,
+    annualSavings: sliderEstimate.annualSavings,
+    roiYears: sliderEstimate.roiYears,
+    installCost: sliderEstimate.installCost,
+    netCost: sliderEstimate.netCost,
+    monthlyLoanPayment: sliderEstimate.monthlyLoanPayment,
+    monthlyLeasePayment: sliderEstimate.monthlyLeasePayment,
+    offsetPercent: sliderEstimate.offsetPercent,
+    annualKwh: sliderEstimate.annualKwh,
+    isRoofLimited: sliderEstimate.isRoofLimited,
+  } : estimate;
 
   return (
     <div>
@@ -512,21 +543,28 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
           background: "linear-gradient(135deg, var(--sun-core), var(--sun-glow))",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>
-          ${estimate.monthlySavings}/mo
+          ${displayEstimate.monthlySavings}/mo
         </div>
         <div style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.9rem", marginTop: 4 }}>
-          ${estimate.annualSavings.toLocaleString()}/year · ${(estimate.annualSavings * 25).toLocaleString()} over 25 years
+          ${displayEstimate.annualSavings.toLocaleString()}/year · ${(displayEstimate.annualSavings * 25).toLocaleString()} over 25 years
         </div>
-        {/* Offset % badge */}
-        {estimate.offsetPercent !== undefined && (
+        {displayEstimate.offsetPercent !== undefined && (
           <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{
               background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)",
               borderRadius: 20, padding: "4px 12px", fontSize: "0.78rem", fontWeight: 700, color: "rgba(255,255,255,0.85)"
             }}>
-              ⚡ Offsets ~{estimate.offsetPercent}% of your usage
+              ⚡ Offsets ~{displayEstimate.offsetPercent}% of your usage
             </span>
-            {estimate.isRoofLimited && (
+            {isAboveRoof && (
+              <span style={{
+                background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.4)",
+                borderRadius: 20, padding: "4px 12px", fontSize: "0.78rem", fontWeight: 700, color: "#fbbf24"
+              }}>
+                🏗️ May need ground mount
+              </span>
+            )}
+            {!isAboveRoof && displayEstimate.isRoofLimited && (
               <span style={{
                 background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.4)",
                 borderRadius: 20, padding: "4px 12px", fontSize: "0.78rem", fontWeight: 700, color: "#fbbf24"
@@ -538,19 +576,54 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
         )}
       </div>
 
-      {/* System specs — single source of truth from layout engine */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 20 }}>
+      {/* System specs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
         {[
-          { val: `${estimate.systemKw} kW`, label: "System size" },
-          { val: `${estimate.panels}`, label: "Panels" },
-          { val: estimate.annualKwh ? `${(estimate.annualKwh / 1000).toFixed(1)}k kWh` : "—", label: "Annual output" },
-          { val: `${estimate.roiYears} yrs`, label: "Payback" },
+          { val: `${displayEstimate.systemKw} kW`, label: "System size" },
+          { val: `${displayEstimate.panels}`, label: "Panels" },
+          { val: displayEstimate.annualKwh ? `${(displayEstimate.annualKwh / 1000).toFixed(1)}k kWh` : "—", label: "Annual output" },
+          { val: `${displayEstimate.roiYears} yrs`, label: "Payback" },
         ].map((s) => (
           <div key={s.label} style={{ background: "var(--white)", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 6px", textAlign: "center" }}>
             <div style={{ fontFamily: "var(--font-brand)", fontWeight: 700, fontSize: "1rem", color: "#c2410c" }}>{s.val}</div>
             <div style={{ fontSize: "0.68rem", color: "#64748b", fontWeight: 600, marginTop: 4 }}>{s.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* ── OFFSET SLIDER ── */}
+      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 12, padding: "16px 18px", marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#0f172a" }}>
+            Adjust your offset target
+          </div>
+          <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "#ea580c" }}>
+            {displayEstimate.offsetPercent ?? 0}% of your bill
+          </div>
+        </div>
+        <input
+          type="range"
+          min={1}
+          max={sliderMax}
+          value={sliderPanels}
+          onChange={(e) => setSliderPanels(parseInt(e.target.value))}
+          style={{ width: "100%", accentColor: "#ea580c", cursor: "pointer", marginBottom: 10 }}
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "#64748b", marginBottom: 10 }}>
+          <span>1 panel (min)</span>
+          <span style={{ color: "#16a34a", fontWeight: 600 }}>🏠 {roofMaxPanels} panels (roof max)</span>
+          <span>{fullOffsetPanels} panels (100%)</span>
+        </div>
+        {isAboveRoof && (
+          <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", fontSize: "0.78rem", color: "#92400e", lineHeight: 1.5 }}>
+            ⚠️ {sliderPanels - roofMaxPanels} panels beyond your roof capacity. A specialist can assess ground-mount or carport options to reach this target.
+          </div>
+        )}
+        {!isAboveRoof && sliderPanels < roofMaxPanels && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 12px", fontSize: "0.78rem", color: "#166534", lineHeight: 1.5 }}>
+            💡 You could fit {roofMaxPanels - sliderPanels} more panels on your roof. Slide right to see the full savings potential.
+          </div>
+        )}
       </div>
 
       {/* ── Satellite roof overlay ── */}
@@ -561,7 +634,7 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
         <SatelliteRoof
           zipCode={data.zipCode}
           panels={initialPanels}
-          systemKw={estimate.systemKw}
+          systemKw={displayEstimate.systemKw}
           monthlyBill={data.monthlyBill ?? undefined}
           lat={data.lat}
           lng={data.lng}
@@ -600,7 +673,7 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
             30% Federal Tax Credit Available
           </div>
           <div style={{ fontSize: "0.82rem", color: "#166534" }}>
-            Saves you ${Math.round(estimate.installCost * 0.3).toLocaleString()} on a ${estimate.installCost.toLocaleString()} system
+            Saves you ${Math.round(displayEstimate.installCost * 0.3).toLocaleString()} on a ${displayEstimate.installCost.toLocaleString()} system
           </div>
         </div>
       </div>
@@ -633,7 +706,7 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                 <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Monthly Lease Payment</span>
-                <span style={{ fontWeight: 800, color: "var(--sun-core)", fontSize: "1.2rem" }}>${estimate.monthlyLeasePayment}/mo</span>
+                <span style={{ fontWeight: 800, color: "var(--sun-core)", fontSize: "1.2rem" }}>${displayEstimate.monthlyLeasePayment}/mo</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                 <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>vs. Your Current Bill</span>
@@ -642,7 +715,7 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
               <div style={{ height: 1, background: "var(--border)", margin: "10px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontWeight: 700, color: "var(--leaf-green)" }}>Immediate Monthly Savings</span>
-                <span style={{ fontWeight: 900, color: "var(--leaf-green)", fontSize: "1.1rem" }}>+${(data.monthlyBill || 0) - estimate.monthlyLeasePayment}/mo</span>
+                <span style={{ fontWeight: 900, color: "var(--leaf-green)", fontSize: "1.1rem" }}>+${(data.monthlyBill || 0) - displayEstimate.monthlyLeasePayment}/mo</span>
               </div>
             </div>
           )}
@@ -650,16 +723,16 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                 <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Monthly Loan Payment</span>
-                <span style={{ fontWeight: 800, color: "var(--sun-core)", fontSize: "1.2rem" }}>${estimate.monthlyLoanPayment}/mo</span>
+                <span style={{ fontWeight: 800, color: "var(--sun-core)", fontSize: "1.2rem" }}>${displayEstimate.monthlyLoanPayment}/mo</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                 <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>Federal Tax Credit (30%)</span>
-                <span style={{ fontWeight: 700, color: "var(--leaf-green)" }}>-${Math.round(estimate.installCost * 0.3).toLocaleString()}</span>
+                <span style={{ fontWeight: 700, color: "var(--leaf-green)" }}>-${Math.round(displayEstimate.installCost * 0.3).toLocaleString()}</span>
               </div>
               <div style={{ height: 1, background: "var(--border)", margin: "10px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontWeight: 700, color: "var(--text-secondary)" }}>Net System Cost</span>
-                <span style={{ fontWeight: 900, color: "var(--earth-dark)", fontSize: "1.1rem" }}>${estimate.netCost.toLocaleString()}</span>
+                <span style={{ fontWeight: 900, color: "var(--earth-dark)", fontSize: "1.1rem" }}>${displayEstimate.netCost.toLocaleString()}</span>
               </div>
             </div>
           )}
@@ -667,16 +740,16 @@ function StepEstimate({ data, estimate, update, onNext, onBack, submitting, subm
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                 <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>System Cost</span>
-                <span style={{ fontWeight: 700, color: "var(--text-secondary)", textDecoration: "line-through" }}>${estimate.installCost.toLocaleString()}</span>
+                <span style={{ fontWeight: 700, color: "var(--text-secondary)", textDecoration: "line-through" }}>${displayEstimate.installCost.toLocaleString()}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
                 <span style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>After 30% Tax Credit</span>
-                <span style={{ fontWeight: 800, color: "var(--sun-core)", fontSize: "1.2rem" }}>${estimate.netCost.toLocaleString()}</span>
+                <span style={{ fontWeight: 800, color: "var(--sun-core)", fontSize: "1.2rem" }}>${displayEstimate.netCost.toLocaleString()}</span>
               </div>
               <div style={{ height: 1, background: "var(--border)", margin: "10px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontWeight: 700, color: "var(--leaf-green)" }}>25-Year Return</span>
-                <span style={{ fontWeight: 900, color: "var(--leaf-green)", fontSize: "1.1rem" }}>${(estimate.annualSavings * 25 - estimate.netCost).toLocaleString()}</span>
+                <span style={{ fontWeight: 900, color: "var(--leaf-green)", fontSize: "1.1rem" }}>${(displayEstimate.annualSavings * 25 - displayEstimate.netCost).toLocaleString()}</span>
               </div>
             </div>
           )}
