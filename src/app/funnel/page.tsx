@@ -1083,7 +1083,7 @@ export default function FunnelPage() {
         return;
       }
 
-      router.push(`/thank-you?tier=${data.tier}&savings=${estimate?.monthlySavings || 0}&name=${encodeURIComponent(formData.firstName)}`);
+      router.push(`/thank-you?tier=${data.tier}&savings=${estimate?.monthlySavings || 0}&name=${encodeURIComponent(formData.firstName)}&email=${encodeURIComponent(formData.email)}`);
     } catch {
       setSubmitError("Network error. Please check your connection and try again.");
     } finally {

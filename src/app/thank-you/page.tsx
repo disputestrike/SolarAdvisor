@@ -9,11 +9,31 @@ function ThankYouContent() {
   const tier = params.get("tier") || "medium";
   const savings = parseInt(params.get("savings") || "0");
   const name = params.get("name") || "there";
+  const email = params.get("email") || "";
 
   const isHot = tier === "hot";
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--sun-bg)", fontFamily: "var(--font-body)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px" }}>
+
+      {/* Email confirmation banner */}
+      {email && (
+        <div style={{
+          background: "#ecfdf5", border: "1px solid #bbf7d0", borderRadius: 12,
+          padding: "14px 20px", marginBottom: 24, maxWidth: 560, width: "100%",
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <span style={{ fontSize: 22, flexShrink: 0 }}>📧</span>
+          <div>
+            <div style={{ fontWeight: 700, color: "#166534", fontSize: "0.9rem" }}>
+              Your solar report has been sent!
+            </div>
+            <div style={{ color: "#15803d", fontSize: "0.82rem", marginTop: 2 }}>
+              Full details emailed to <strong>{email}</strong> — check your inbox (and spam folder).
+            </div>
+          </div>
+        </div>
+      )}
       {/* Confetti-like sun */}
       <div style={{
         width: 100, height: 100, borderRadius: "50%",
@@ -72,8 +92,8 @@ function ThankYouContent() {
             What Happens Next
           </div>
           {[
+            { icon: "📧", time: "Just now", desc: `Your full solar feasibility report was emailed to ${email || "you"} — open it to see your satellite roof analysis and financing breakdown` },
             { icon: "📱", time: isHot ? "Within 1 hour" : "Within 24 hours", desc: "A solar specialist contacts you to confirm your estimate" },
-            { icon: "📋", time: "Same day", desc: "You receive your full savings report and financing options by email" },
             { icon: "📅", time: "At your convenience", desc: "Optional site visit for exact measurement and final quote" },
             { icon: "⚡", time: "4–8 weeks", desc: "If you decide to move forward, panels are installed and generating power" },
           ].map((item, i) => (

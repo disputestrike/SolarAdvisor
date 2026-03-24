@@ -39,12 +39,15 @@ export async function sendEmail(opts: { to: string; subject: string; html: strin
 
 // ─── Lead notifications ───────────────────────────────────────────────────────
 export async function notifyLeadReceived(lead: Lead) {
+  console.log(`[notify] Sending report to ${lead.email} (lead #${lead.id}, tier: ${lead.tier})`);
+
   // Welcome email to lead
-  await sendEmail({
+  const sent = await sendEmail({
     to: lead.email,
     subject: `Your Solar Feasibility Report is Ready ☀ — ${lead.firstName}`,
     html: getSolarReportEmail(lead),
   });
+  console.log(`[notify] Email to lead: ${sent ? "✅ sent" : "❌ failed"}`);
 
   // SMS confirmation (optional)
   if (lead.phone && lead.contactPreference !== "email") {
@@ -57,11 +60,12 @@ export async function notifyLeadReceived(lead: Lead) {
   // Hot lead alert to admin
   const adminEmail = process.env.ADMIN_EMAIL;
   if (lead.tier === "hot" && adminEmail) {
-    await sendEmail({
+    const adminSent = await sendEmail({
       to: adminEmail,
       subject: `🔥 HOT LEAD: ${lead.firstName} ${lead.lastName} — Score ${lead.score}/100`,
       html: getAdminAlertEmail(lead),
     });
+    console.log(`[notify] Admin alert: ${adminSent ? "✅ sent" : "❌ failed"}`);
   }
 }
 
