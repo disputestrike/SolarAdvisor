@@ -1078,7 +1078,7 @@ export default function FunnelPage() {
         const msg =
           data.details?.fieldErrors
             ? Object.values(data.details.fieldErrors).flat().join(" ")
-            : (data.detail ? `${data.error}: ${data.detail}` : data.error) || "Something went wrong. Please try again.";
+            : data.technical || data.detail || data.error || "Something went wrong.";
         setSubmitError(typeof msg === "string" ? msg : "Something went wrong. Please try again.");
         return;
       }

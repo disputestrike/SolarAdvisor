@@ -183,21 +183,35 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[Lead API]", err);
     const raw = err instanceof Error ? err.message : String(err);
-    /** Saving the lead hits MySQL first. Email/SMS run after success and do not cause this error. */
-    const dbUnreachable =
-      /ETIMEDOUT|ECONNREFUSED|ENOTFOUND|getaddrinfo|ER_ACCESS_DENIED_ERROR/i.test(raw);
-    if (dbUnreachable) {
-      return NextResponse.json(
-        {
-          error: "Database connection failed",
-          detail:
-            "The app could not reach MySQL in time (this is not an email/SMTP issue). On Railway: open your **web** service → Variables → add **MYSQL_URL** via Reference to the MySQL plugin (private URL). Remove placeholder DATABASE_URL. Then redeploy or run `npm run migrate:now` against the same database.",
-          technical: raw,
-        },
-        { status: 503 }
-      );
+    const stack = err instanceof Error ? err.stack?.split("\n").slice(0,3).join(" | ") : "";
+
+    // Specific DB connection errors
+    if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND|getaddrinfo/i.test(raw)) {
+      return NextResponse.json({
+        error: "Database unreachable — MYSQLHOST not set or MySQL plugin not linked to this service in Railway",
+        detail: raw,
+      }, { status: 503 });
     }
-    return NextResponse.json({ error: "Internal server error", detail: raw }, { status: 500 });
+
+    if (/ER_ACCESS_DENIED/i.test(raw)) {
+      return NextResponse.json({
+        error: "Database access denied — check MYSQLPASSWORD / MYSQL_ROOT_PASSWORD in Railway vars",
+        detail: raw,
+      }, { status: 503 });
+    }
+
+    if (/ER_NO_SUCH_TABLE|Table.*doesn.*exist/i.test(raw)) {
+      return NextResponse.json({
+        error: "Tables missing — migration did not run. Tables exist in Railway DB panel but service can't reach them.",
+        detail: raw,
+      }, { status: 503 });
+    }
+
+    // All other errors — show full detail so we can debug
+    return NextResponse.json({
+      error: raw,
+      detail: stack,
+    }, { status: 500 });
   }
 }
 
